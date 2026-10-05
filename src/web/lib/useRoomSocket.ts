@@ -21,24 +21,29 @@ export function useRoomSocket(roomCode: string | null, token: string | null) {
   const [state, dispatch] = useReducer(reducer, initialClientState);
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
-  const closedByUser = useRef(false);
 
   useEffect(() => {
     if (!roomCode || !token) return;
-    closedByUser.current = false;
+    // effect 実行ごとに閉じたフラグを持つ。共有 ref だと StrictMode の二重実行で
+    // 古い接続の onclose が新しい effect の再接続を誘発し、接続が2本になる
+    let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let current: WebSocket | null = null;
 
     const connect = () => {
+      if (cancelled) return;
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const ws = new WebSocket(`${proto}://${location.host}/ws/room/${encodeURIComponent(roomCode)}?token=${encodeURIComponent(token)}`);
+      current = ws;
       wsRef.current = ws;
-      ws.onopen = () => { retryRef.current = 0; dispatch({ kind: "connected", value: true }); };
+      ws.onopen = () => { if (!cancelled) { retryRef.current = 0; dispatch({ kind: "connected", value: true }); } };
       ws.onmessage = (ev) => {
+        if (cancelled) return;
         try { dispatch({ kind: "message", msg: JSON.parse(ev.data as string) as ServerMessage, now: Date.now() }); } catch { /* ignore */ }
       };
       ws.onclose = () => {
+        if (cancelled) return;
         dispatch({ kind: "connected", value: false });
-        if (closedByUser.current) return;
         const delay = Math.min(10_000, 500 * 2 ** retryRef.current++);
         timer = setTimeout(connect, delay);
       };
@@ -47,7 +52,8 @@ export function useRoomSocket(roomCode: string | null, token: string | null) {
     connect();
 
     const onVisible = () => {
-      if (document.visibilityState === "visible" && wsRef.current?.readyState !== WebSocket.OPEN) {
+      if (cancelled) return;
+      if (document.visibilityState === "visible" && current?.readyState !== WebSocket.OPEN) {
         if (timer) clearTimeout(timer);
         retryRef.current = 0;
         connect();
@@ -56,10 +62,11 @@ export function useRoomSocket(roomCode: string | null, token: string | null) {
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      closedByUser.current = true;
+      cancelled = true;
       document.removeEventListener("visibilitychange", onVisible);
       if (timer) clearTimeout(timer);
-      wsRef.current?.close();
+      current?.close();
+      if (wsRef.current === current) wsRef.current = null;
     };
   }, [roomCode, token]);
 
