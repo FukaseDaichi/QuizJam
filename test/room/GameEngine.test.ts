@@ -197,3 +197,83 @@ describe("GameEngine snapshot", () => {
     expect(e2.leaderboard()).toEqual(e.leaderboard());
   });
 });
+
+describe("GameEngine close / next / final", () => {
+  let e: GameEngine;
+  beforeEach(() => {
+    e = GameEngine.create("ABC123");
+    e.addParticipant("p1", "みさき");
+    e.addParticipant("p2", "たろう");
+    e.start(makeSet(), false, T0);
+  });
+
+  it("closeQuestion moves to questionResult and lists correct answerers in rank order", () => {
+    e.submitAnswer("p2", "りんご", T0 + 1);
+    e.submitAnswer("p1", "りんご", T0 + 2);
+    const result = e.closeQuestion(T0 + 5000);
+    expect(e.phase).toBe("questionResult");
+    expect(result).toEqual({
+      answers: ["りんご", "林檎"],
+      results: [
+        { participantId: "p2", nickname: "たろう", correctRank: 1, points: 150 },
+        { participantId: "p1", nickname: "みさき", correctRank: 2, points: 130 },
+      ],
+    });
+    expect(e.questionResult()).toEqual(result);
+  });
+
+  it("closeQuestion throws outside question phase", () => {
+    e.closeQuestion(T0 + 1);
+    expect(() => e.closeQuestion(T0 + 2)).toThrow();
+  });
+
+  it("rejects answers after manual close", () => {
+    e.closeQuestion(T0 + 1);
+    expect(e.submitAnswer("p1", "りんご", T0 + 2)).toEqual({ kind: "rejected", code: "not_in_question" });
+  });
+
+  it("next opens the following question with a fresh deadline and attempts", () => {
+    e.submitAnswer("p1", "ごりら", T0 + 1);
+    e.closeQuestion(T0 + 2);
+    const r = e.next(T0 + 10_000);
+    expect(r).toEqual({
+      kind: "question",
+      question: { index: 1, total: 2, prompt: "なばな", hint: undefined, deadlineAt: T0 + 10_000 + 30_000, maxAttempts: 3 },
+    });
+    expect(e.myStatus("p1")).toEqual({ attemptsUsed: 0, correct: false, correctRank: null });
+  });
+
+  it("next after the last question returns the final leaderboard", () => {
+    e.submitAnswer("p1", "りんご", T0 + 1);
+    e.closeQuestion(T0 + 2);
+    e.next(T0 + 3);
+    e.submitAnswer("p2", "ばなな", T0 + 4);
+    e.closeQuestion(T0 + 5);
+    const r = e.next(T0 + 6);
+    expect(r).toEqual({
+      kind: "final",
+      entries: [
+        { participantId: "p1", nickname: "みさき", score: 150, rank: 1 },
+        { participantId: "p2", nickname: "たろう", score: 150, rank: 1 },
+      ],
+    });
+    expect(e.phase).toBe("finalResult");
+    expect(e.currentQuestionView()).toBeNull();
+  });
+
+  it("next throws unless in questionResult phase", () => {
+    expect(() => e.next(T0 + 1)).toThrow();
+  });
+
+  it("endGame returns to lobby keeping scores", () => {
+    e.submitAnswer("p1", "りんご", T0 + 1);
+    e.closeQuestion(T0 + 2);
+    e.next(T0 + 3);
+    e.closeQuestion(T0 + 4);
+    e.next(T0 + 5);
+    e.endGame();
+    expect(e.phase).toBe("lobby");
+    expect(e.leaderboard()[0].score).toBe(150);
+    expect(e.deadlineAt).toBeNull();
+  });
+});

@@ -1,7 +1,7 @@
 import type { Answer, LeaderboardEntry, Participant, Phase, QuestionSet, QuestionSettings } from "../shared/types";
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
-import type { ErrorCode, MyAnswerStatus, QuestionView } from "../shared/messages";
+import type { ErrorCode, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
 
 export interface EngineState {
   roomCode: string;
@@ -163,6 +163,50 @@ export class GameEngine {
     this.s.answers.push({ questionIndex: idx, participantId, text, correct: false, submittedAt: now, correctRank: null });
     const remainingAttempts = settings.maxAttempts === null ? null : settings.maxAttempts - (mine.length + 1);
     return { kind: "wrong", remainingAttempts, points };
+  }
+
+  closeQuestion(now: number): QuestionResultView {
+    if (this.s.phase !== "question") throw new Error("not in question phase");
+    this.s.phase = "questionResult";
+    if (this.s.deadlineAt === null || this.s.deadlineAt > now) this.s.deadlineAt = now;
+    return this.questionResult()!;
+  }
+
+  questionResult(): QuestionResultView | null {
+    if (this.s.phase !== "questionResult" || !this.s.questionSet) return null;
+    const idx = this.s.currentIndex;
+    const settings = this.settings(idx);
+    const q = this.s.questionSet.questions[idx];
+    const results = this.answersFor(idx)
+      .filter((a) => a.correct)
+      .sort((a, b) => a.correctRank! - b.correctRank!)
+      .map((a) => ({
+        participantId: a.participantId,
+        nickname: this.s.participants[a.participantId]?.nickname ?? "?",
+        correctRank: a.correctRank!,
+        points: settings.basePoints + (settings.rankBonus[a.correctRank! - 1] ?? 0),
+      }));
+    return { answers: [...q.answers], results };
+  }
+
+  next(now: number): { kind: "question"; question: QuestionView } | { kind: "final"; entries: LeaderboardEntry[] } {
+    if (this.s.phase !== "questionResult" || !this.s.questionSet) throw new Error("not in questionResult phase");
+    const nextIndex = this.s.currentIndex + 1;
+    if (nextIndex >= this.s.questionSet.questions.length) {
+      this.s.phase = "finalResult";
+      this.s.deadlineAt = null;
+      this.s.questionStartedAt = null;
+      return { kind: "final", entries: this.leaderboard() };
+    }
+    this.openQuestion(nextIndex, now);
+    return { kind: "question", question: this.currentQuestionView()! };
+  }
+
+  endGame(): void {
+    this.s.phase = "lobby";
+    this.s.deadlineAt = null;
+    this.s.questionStartedAt = null;
+    this.s.currentIndex = 0;
   }
 
   correctCount(): number {
