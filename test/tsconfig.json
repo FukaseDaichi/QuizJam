@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.worker.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/vitest-plugin/types"]
+  },
+  "include": [
+    "./**/*.ts",
+    "../src/worker/**/*.ts",
+    "../src/room/**/*.ts",
+    "../src/shared/**/*.ts",
+    "../src/web/lib/clientState.ts",
+    "../src/web/lib/time.ts"
+  ]
+}

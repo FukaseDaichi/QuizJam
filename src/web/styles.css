@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans JP", system-ui, sans-serif;
+  --color-brand-blue: #2563eb;
+  --color-brand-purple: #7c3aed;
+  --color-brand-pink: #ec4899;
+  --color-brand-orange: #fb923c;
+}
+
+@utility bg-brand {
+  background: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899, #fb923c);
+}
+
+@utility text-brand {
+  background: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899, #fb923c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+html, body, #root { height: 100%; }
+body { font-family: var(--font-sans); }
