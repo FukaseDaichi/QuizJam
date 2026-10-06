@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "quizjam-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "0a8408ca-54a7-408e-a406-ce3738264234",
       "migrations_dir": "migrations"
     }
   ],
