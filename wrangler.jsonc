@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "quizjam",
+  "account_id": "4ea1c13028f1e4db1c06a8467554a3f3",
   "compatibility_date": "2026-10-04",
   "compatibility_flags": ["nodejs_compat"],
   "main": "./src/worker/index.ts",
