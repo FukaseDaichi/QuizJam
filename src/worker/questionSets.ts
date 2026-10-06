@@ -6,10 +6,10 @@ export async function listQuestionSets(db: D1Database): Promise<QuestionSetSumma
   const { results } = await db
     .prepare("SELECT id, name, data, updated_at FROM question_sets ORDER BY updated_at DESC")
     .all<{ id: string; name: string; data: string; updated_at: number }>();
-  return results.map((r) => ({
-    id: r.id, name: r.name, updatedAt: r.updated_at,
-    questionCount: (JSON.parse(r.data) as QuestionSet).questions.length,
-  }));
+  return results.map((r) => {
+    const set = JSON.parse(r.data) as QuestionSet;
+    return { id: r.id, name: r.name, updatedAt: r.updated_at, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length };
+  });
 }
 
 export async function getQuestionSet(db: D1Database, id: string): Promise<QuestionSet | null> {

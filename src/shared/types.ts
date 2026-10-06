@@ -15,12 +15,14 @@ export interface Question {
   prompt: string;
   answers: string[];
   hint?: string;
+  imageUrl?: string;           // /api/images/<key>（R2 に保存した問題画像）
   overrides?: Partial<QuestionSettings>;
 }
 
 export interface QuestionSet {
   id: string;
-  name: string;
+  name: string;                // 企画名
+  coverImageUrl?: string;      // タイトルスライドの画像
   settings: QuestionSettings;
   questions: Question[];
 }
@@ -53,6 +55,7 @@ export interface LeaderboardEntry {
 export interface QuestionSetSummary {
   id: string;
   name: string;
+  coverImageUrl?: string;
   questionCount: number;
   updatedAt: number;
 }

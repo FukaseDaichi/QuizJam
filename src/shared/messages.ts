@@ -34,6 +34,7 @@ export interface QuestionView {
   total: number;
   prompt: string;
   hint?: string;
+  imageUrl?: string;
   deadlineAt: number | null;
   maxAttempts: number | null;
 }

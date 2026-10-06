@@ -15,6 +15,8 @@ npm run typecheck
 ```
 
 - GM トップ: `/`　管理画面: `/admin`（合言葉は `.dev.vars` の値）
+- 管理画面はスライド形式のエディタ。左にスライド一覧、中央に GM 画面と同じ見た目のプレビュー、右に選択中スライドの内容。タイトルスライド（企画名・表紙画像・全問共通の設定）のあと、1問ずつスライドを追加して正解・出題文・画像・ヒント・個別設定を入力する
+- 画像は R2（`quizjam-images`）に保存される。ローカルでは wrangler がエミュレートするので追加設定は不要
 - 参加者: GM 画面の QR か `/play/<ルームコード>`
 - `wrangler.jsonc` を変更したら `npm run cf-typegen` で型を再生成する
 
@@ -23,6 +25,7 @@ npm run typecheck
 ```bash
 npx wrangler login
 npx wrangler d1 create quizjam-db     # 初回のみ。出力の database_id を wrangler.jsonc に反映
+npx wrangler r2 bucket create quizjam-images   # 初回のみ。問題画像の保存先
 npm run db:migrate:remote
 npx wrangler secret put ADMIN_PASSPHRASE
 npm run deploy
@@ -32,7 +35,8 @@ npm run deploy
 
 - Cloudflare Workers（Hono）: 静的配信、HTTP API、WebSocket 転送
 - Durable Object `Room`（SQLite）: ルームごとのゲーム進行。WebSocket Hibernation、Alarm で締切と24時間後の自動削除
-- D1 `quizjam-db`: 問題セット
+- D1 `quizjam-db`: 問題セット（企画名・設定・問題。画像は URL で参照）
+- R2 `quizjam-images`: 問題スライドの画像。`POST /api/images`（合言葉必須）でアップロードし `GET /api/images/<key>` で配信。ブラウザ側で長辺 1600px に縮小してから送る
 - React + Vite + Tailwind、lucide-react
 
 ```
@@ -48,11 +52,15 @@ test/       Vitest（GameEngine 単体、Room / API 統合、クライアント�
 
 GM 用 PC 1台、スマホ 2台以上で実施する。
 
-- [ ] `/admin` に合言葉でログインし、問題セット（3問・固定20秒・お手付き2回）を作成できる
-- [ ] 「生成」ボタンで正解からシャッフル文字列が作られ、JSON エクスポート→インポートで内容が復元される
+- [ ] `/admin` に合言葉でログインし、タイトルスライドで企画名・表紙画像・共通設定（固定20秒・お手付き2回）を入力できる
+- [ ] 「問題を追加」で1問ずつスライドが増え、中央のプレビューが右側の入力に追従する。↑↓キーでスライドを移動できる
+- [ ] 問題に画像をドロップするとアップロードされ、サムネイルとプレビューに表示される。保存→リロードしても画像が残る
+- [ ] 「生成」ボタンで正解からシャッフル文字列が作られ、JSON エクスポート→インポートで内容（画像 URL を含む）が復元される
+- [ ] 未保存のまま一覧へ戻ろうとすると警告が出る。正解や出題文が空のまま保存すると該当スライドに移動してエラーが出る
 - [ ] `/` から「新しいルームを作る」→ QR とルームコードが表示される
 - [ ] スマホで QR を読み取り、ニックネーム入力で入室 → GM の参加者一覧に即時表示される
 - [ ] 「開始する」で全スマホに第1問が表示され、残り時間が GM・スマホで同じ秒数を刻む
+- [ ] 画像付きの問題では GM 画面（プロジェクター）とスマホの両方に画像が表示され、出題文が画像の下に出る
 - [ ] 正解を送ると本人に「正解！」、GM にポップアップ＋紙吹雪、順位表が更新される
 - [ ] 不正解で残り回数が減り、上限で入力が閉じる
 - [ ] 全員が正解または上限到達で自動的に問題結果に進む／時間切れでも自動で進む

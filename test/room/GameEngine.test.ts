@@ -12,7 +12,7 @@ function makeSet(overrides: Partial<QuestionSet["settings"]> = {}): QuestionSet 
     settings: { ...DEFAULT_SETTINGS, ...overrides },
     questions: [
       { id: "q1", type: "anagram", prompt: "ごんり", answers: ["りんご", "林檎"] },
-      { id: "q2", type: "anagram", prompt: "なばな", answers: ["ばなな"] },
+      { id: "q2", type: "anagram", prompt: "なばな", answers: ["ばなな"], imageUrl: "/api/images/banana.png" },
     ],
   };
 }
@@ -238,7 +238,7 @@ describe("GameEngine close / next / final", () => {
     const r = e.next(T0 + 10_000);
     expect(r).toEqual({
       kind: "question",
-      question: { index: 1, total: 2, prompt: "なばな", hint: undefined, deadlineAt: T0 + 10_000 + 30_000, maxAttempts: 3 },
+      question: { index: 1, total: 2, prompt: "なばな", hint: undefined, imageUrl: "/api/images/banana.png", deadlineAt: T0 + 10_000 + 30_000, maxAttempts: 3 },
     });
     expect(e.myStatus("p1")).toEqual({ attemptsUsed: 0, correct: false, correctRank: null });
   });
