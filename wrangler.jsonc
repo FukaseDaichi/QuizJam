@@ -13,6 +13,9 @@
     "bindings": [{ "name": "ROOM", "class_name": "Room" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "r2_buckets": [
+    { "binding": "IMAGES", "bucket_name": "quizjam-images" }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

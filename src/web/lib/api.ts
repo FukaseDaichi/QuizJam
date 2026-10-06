@@ -38,6 +38,19 @@ export const api = {
     call<QuestionSet>(`/api/question-sets/${id}`, { method: "PUT", body: JSON.stringify(input) }, passphrase),
   deleteQuestionSet: (id: string, passphrase: string) =>
     call<void>(`/api/question-sets/${id}`, { method: "DELETE" }, passphrase),
+  uploadImage: async (blob: Blob, passphrase: string) => {
+    const res = await fetch("/api/images", {
+      method: "POST",
+      headers: { "Content-Type": blob.type, Authorization: `Bearer ${passphrase}` },
+      body: blob,
+    });
+    if (!res.ok) {
+      let code = "error";
+      try { code = ((await res.json()) as { error?: string }).error ?? code; } catch { /* ignore */ }
+      throw new ApiError(res.status, code);
+    }
+    return (await res.json()) as { key: string; url: string };
+  },
   verifyPassphrase: (passphrase: string) =>
     call("/api/admin/verify", { method: "POST" }, passphrase).then(() => true, () => false),
 };

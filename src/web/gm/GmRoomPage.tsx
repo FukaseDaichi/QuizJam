@@ -90,7 +90,10 @@ export function GmRoomPage() {
                 <span className="text-xl font-bold">第{q.index + 1}問 / {q.total}問</span>
                 {state.phase === "question" && <CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} size="lg" />}
               </div>
-              <p key={q.index} className="qj-pop my-auto break-all py-10 text-center text-7xl font-black leading-tight tracking-widest">{q.prompt}</p>
+              <div key={q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-6">
+                {q.imageUrl && <img src={q.imageUrl} alt="" className="min-h-0 max-h-[48vh] w-auto max-w-full flex-1 rounded-2xl object-contain" />}
+                <p className={`break-all text-center font-black leading-tight tracking-widest ${q.imageUrl ? "text-5xl" : "text-7xl"}`}>{q.prompt}</p>
+              </div>
               {state.phase === "question" && (
                 <p className="text-center text-xl text-slate-300">正解者 {state.correctCountThisQuestion} / 参加者 {connectedCount}</p>
               )}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, Settings, Play } from "lucide-react";
+import { Plus, Settings, Play, Presentation } from "lucide-react";
 import { api } from "../lib/api";
 import { storage } from "../lib/storage";
 import { Button } from "../components/Button";
@@ -37,8 +37,13 @@ export function GmTopPage() {
           ) : (
             <ul className="divide-y divide-slate-700">
               {sets.map((s) => (
-                <li key={s.id} className="flex items-center justify-between py-3">
-                  <span className="text-lg font-bold">{s.name}</span>
+                <li key={s.id} className="flex items-center justify-between gap-4 py-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-700 text-slate-400">
+                      {s.coverImageUrl ? <img src={s.coverImageUrl} alt="" className="h-full w-full object-cover" /> : <Presentation size={18} aria-hidden />}
+                    </span>
+                    <span className="truncate text-lg font-bold">{s.name}</span>
+                  </span>
                   <span className="text-slate-400">{s.questionCount}問</span>
                 </li>
               ))}

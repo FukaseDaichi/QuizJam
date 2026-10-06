@@ -5,6 +5,16 @@ export type QuestionSetInput = Omit<QuestionSet, "id">;
 
 const TIMER_MODES = new Set(["fixed", "afterFirstCorrect", "none"]);
 
+/** 画像 URL は自サーバーの /api/images/<key> か https のみ許可する */
+export function isValidImageUrl(x: unknown): x is string {
+  return typeof x === "string" && x.length > 0 && x.length <= 500 && (/^\/api\/images\/[A-Za-z0-9._-]+$/.test(x) || /^https:\/\//.test(x));
+}
+
+function optionalImageUrl(x: unknown, field: string): string | undefined | { error: string } {
+  if (x === undefined || x === null || x === "") return undefined;
+  return isValidImageUrl(x) ? x : { error: `${field} invalid` };
+}
+
 function validateSettings(x: unknown, partial: boolean): QuestionSettings | Partial<QuestionSettings> | { error: string } {
   if (typeof x !== "object" || x === null) return { error: "settings must be an object" };
   const o = x as Record<string, unknown>;
@@ -24,6 +34,8 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
   if (typeof o.name !== "string" || o.name.trim().length === 0) return { error: "name is required" };
   const settings = validateSettings(o.settings ?? {}, false);
   if ("error" in settings) return settings;
+  const coverImageUrl = optionalImageUrl(o.coverImageUrl, "coverImageUrl");
+  if (typeof coverImageUrl === "object") return coverImageUrl;
   if (!Array.isArray(o.questions)) return { error: "questions must be an array" };
   const questions: Question[] = [];
   for (const [i, q] of (o.questions as unknown[]).entries()) {
@@ -33,6 +45,8 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
     if (!Array.isArray(qq.answers) || qq.answers.length === 0 || !qq.answers.every((a) => typeof a === "string" && a.length > 0)) {
       return { error: `questions[${i}].answers must be a non-empty string array` };
     }
+    const imageUrl = optionalImageUrl(qq.imageUrl, "imageUrl");
+    if (typeof imageUrl === "object") return { error: `questions[${i}].${imageUrl.error}` };
     let overrides: Partial<QuestionSettings> | undefined;
     if (qq.overrides !== undefined) {
       const v = validateSettings(qq.overrides, true);
@@ -45,8 +59,9 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       prompt: qq.prompt,
       answers: qq.answers as string[],
       hint: typeof qq.hint === "string" && qq.hint ? qq.hint : undefined,
+      imageUrl,
       overrides,
     });
   }
-  return { name: o.name.trim(), settings: settings as QuestionSettings, questions };
+  return { name: o.name.trim(), coverImageUrl, settings: settings as QuestionSettings, questions };
 }

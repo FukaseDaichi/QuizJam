@@ -112,6 +112,7 @@ export class GameEngine {
       total: set.questions.length,
       prompt: q.prompt,
       hint: q.hint,
+      imageUrl: q.imageUrl,
       deadlineAt: this.s.deadlineAt,
       maxAttempts: this.settings().maxAttempts,
     };

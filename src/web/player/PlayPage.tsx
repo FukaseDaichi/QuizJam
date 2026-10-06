@@ -71,6 +71,7 @@ export function PlayPage() {
         <>
           <Card>
             <p className="text-sm font-bold text-slate-500">第{q.index + 1}問 / {q.total}問</p>
+            {q.imageUrl && <img key={q.index} src={q.imageUrl} alt="" className="qj-pop mt-2 max-h-56 w-full rounded-xl bg-slate-100 object-contain" />}
             <p className="qj-pop mt-2 break-all text-4xl font-black leading-tight tracking-wider">{q.prompt}</p>
             {q.hint && <p className="mt-2 text-slate-500">ヒント: {q.hint}</p>}
             <div className="mt-4"><CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} /></div>
