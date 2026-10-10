@@ -31,6 +31,15 @@ npx wrangler secret put ADMIN_PASSPHRASE
 npm run deploy
 ```
 
+### 自動デプロイ（GitHub Actions）
+
+`.github/workflows/deploy.yml` が main への push（と Actions 画面からの手動実行）で、型チェック・テスト・ビルドのあと D1 マイグレーション適用 → `wrangler deploy` を行う。PR では型チェック・テスト・ビルドだけ実行する。
+
+初回のみ以下を設定する（D1・R2 の作成と `ADMIN_PASSPHRASE` の登録は上の手順で済ませておく。シークレットはデプロイしても消えない）。
+
+1. Cloudflare ダッシュボード → My Profile → API Tokens で「Edit Cloudflare Workers」テンプレートからトークンを作り、権限に「Account / D1 / Edit」を追加する
+2. GitHub リポジトリの Settings → Secrets and variables → Actions に `CLOUDFLARE_API_TOKEN` として登録する
+
 ## 構成
 
 - Cloudflare Workers（Hono）: 静的配信、HTTP API、WebSocket 転送
