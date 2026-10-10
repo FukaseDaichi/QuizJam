@@ -12,6 +12,7 @@ import { CountdownTimer } from "../components/CountdownTimer";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { CorrectPopup } from "./CorrectPopup";
 import { Confetti } from "./Confetti";
+import { isLightColor } from "../lib/color";
 import type { QuestionSetSummary } from "../../shared/types";
 
 export function GmRoomPage() {
@@ -45,6 +46,10 @@ export function GmRoomPage() {
   const joinUrl = `${location.origin}/play/${roomCode}`;
   const q = state.question;
   const connectedCount = state.participants.filter((p) => p.connected).length;
+  // 問題スライドの背景色が明るいときは、カード内の文字を濃い色にする
+  const light = !!q?.background && isLightColor(q.background);
+  // 画像はヘッダーやカード内の表示を除いた残りの高さいっぱいに。出題文・結果パネルがあるときはその分だけ縮める
+  const imageHeight = state.phase === "questionResult" ? "max-h-[calc(100vh-36rem)]" : q?.prompt ? "max-h-[calc(100vh-30rem)]" : "max-h-[calc(100vh-24rem)]";
 
   return (
     <main className="grid min-h-full grid-rows-[auto_1fr_auto] bg-slate-900 text-slate-100">
@@ -85,27 +90,27 @@ export function GmRoomPage() {
           )}
 
           {(state.phase === "question" || state.phase === "questionResult") && q && (
-            <Card tone="dark" className="flex flex-1 flex-col">
-              <div className="flex items-center justify-between text-slate-400">
+            <Card tone={light ? "light" : "dark"} className="flex flex-1 flex-col" style={q.background ? { backgroundColor: q.background, borderColor: q.background } : undefined}>
+              <div className={`flex items-center justify-between ${light ? "text-slate-500" : "text-slate-400"}`}>
                 <span className="text-xl font-bold">第{q.index + 1}問 / {q.total}問</span>
                 {state.phase === "question" && <CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} size="lg" />}
               </div>
-              <div key={q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-6">
-                {q.imageUrl && <img src={q.imageUrl} alt="" className="min-h-0 max-h-[48vh] w-auto max-w-full flex-1 rounded-2xl object-contain" />}
-                <p className={`break-all text-center font-black leading-tight tracking-widest ${q.imageUrl ? "text-5xl" : "text-7xl"}`}>{q.prompt}</p>
+              <div key={q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">
+                {q.imageUrl && <img src={q.imageUrl} alt="" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />}
+                {q.prompt && <p className={`break-all text-center font-black leading-tight tracking-widest ${q.imageUrl ? "text-5xl" : "text-7xl"}`}>{q.prompt}</p>}
               </div>
               {state.phase === "question" && (
-                <p className="text-center text-xl text-slate-300">正解者 {state.correctCountThisQuestion} / 参加者 {connectedCount}</p>
+                <p className={`text-center text-xl ${light ? "text-slate-600" : "text-slate-300"}`}>正解者 {state.correctCountThisQuestion} / 参加者 {connectedCount}</p>
               )}
               {state.phase === "questionResult" && state.questionResult && (
-                <div className="qj-slide-in rounded-2xl bg-slate-700/60 p-6 text-center">
-                  <p className="text-sm font-bold text-slate-400">正解</p>
-                  <p className="text-5xl font-black text-green-400">{state.questionResult.answers.join(" / ")}</p>
+                <div className={`qj-slide-in rounded-2xl p-6 text-center ${light ? "bg-white/70" : "bg-slate-700/60"}`}>
+                  <p className={`text-sm font-bold ${light ? "text-slate-500" : "text-slate-400"}`}>正解</p>
+                  <p className={`text-5xl font-black ${light ? "text-green-700" : "text-green-400"}`}>{state.questionResult.answers.join(" / ")}</p>
                   <ol className="mt-4 flex flex-wrap justify-center gap-3">
                     {state.questionResult.results.map((r) => (
-                      <li key={r.participantId} className="rounded-xl bg-slate-800 px-4 py-2 text-lg"><b>{r.correctRank}.</b> {r.nickname} <span className="text-green-400">+{r.points}</span></li>
+                      <li key={r.participantId} className={`rounded-xl px-4 py-2 text-lg ${light ? "bg-white" : "bg-slate-800"}`}><b>{r.correctRank}.</b> {r.nickname} <span className={light ? "text-green-700" : "text-green-400"}>+{r.points}</span></li>
                     ))}
-                    {state.questionResult.results.length === 0 && <li className="text-slate-400">正解者なし</li>}
+                    {state.questionResult.results.length === 0 && <li className={light ? "text-slate-500" : "text-slate-400"}>正解者なし</li>}
                   </ol>
                 </div>
               )}

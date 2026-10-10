@@ -57,6 +57,10 @@ describe("GameEngine start", () => {
       deadlineAt: T0 + 20_000, maxAttempts: 3,
     });
   });
+  it("passes the set's slide background to the question view", () => {
+    const view = e.start({ ...makeSet(), slideBackground: "#fbf1dd" }, false, T0);
+    expect(view.background).toBe("#fbf1dd");
+  });
   it("has no deadline in afterFirstCorrect and none modes", () => {
     expect(e.start(makeSet({ timerMode: "afterFirstCorrect" }), false, T0).deadlineAt).toBeNull();
     const e2 = GameEngine.create("X");

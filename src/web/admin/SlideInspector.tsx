@@ -15,9 +15,9 @@ const TIMER_LABELS: Record<TimerMode, string> = {
 };
 
 /** タイトルスライド＝企画名・表紙・セット全体の設定 */
-export function TitleInspector({ name, coverImageUrl, settings, passphrase, onName, onCover, onSettings }: {
-  name: string; coverImageUrl?: string; settings: QuestionSettings; passphrase: string;
-  onName: (v: string) => void; onCover: (v: string | undefined) => void; onSettings: (s: QuestionSettings) => void;
+export function TitleInspector({ name, coverImageUrl, slideBackground, settings, passphrase, onName, onCover, onSlideBackground, onSettings }: {
+  name: string; coverImageUrl?: string; slideBackground?: string; settings: QuestionSettings; passphrase: string;
+  onName: (v: string) => void; onCover: (v: string | undefined) => void; onSlideBackground: (v: string | undefined) => void; onSettings: (s: QuestionSettings) => void;
 }) {
   return (
     <div className="flex flex-col gap-5">
@@ -25,6 +25,17 @@ export function TitleInspector({ name, coverImageUrl, settings, passphrase, onNa
         <input value={name} onChange={(e) => onName(e.target.value)} placeholder="例: 新人歓迎会クイズ 2026" className={`${inputClass} text-lg`} autoFocus />
       </Field>
       <ImageField label="表紙画像（任意）" value={coverImageUrl} onChange={onCover} passphrase={passphrase} />
+      <div className="text-sm font-bold text-slate-300">
+        問題スライドの背景色<span className="ml-2 text-xs font-normal text-slate-500">問題画像の地の色に合わせると画像が背景になじむ</span>
+        <div className="mt-1 flex items-center gap-2">
+          <input type="color" value={slideBackground ?? "#1e293b"} onChange={(e) => onSlideBackground(e.target.value)} aria-label="問題スライドの背景色"
+            className="h-11 w-14 cursor-pointer rounded-xl border border-slate-600 bg-slate-900 p-1" />
+          <span className="font-mono text-sm text-slate-400">{slideBackground ?? "標準（ダーク）"}</span>
+          {slideBackground && (
+            <button type="button" onClick={() => onSlideBackground(undefined)} className="ml-auto text-xs font-bold text-slate-400 underline hover:text-slate-200">標準に戻す</button>
+          )}
+        </div>
+      </div>
 
       <div className="border-t border-slate-700 pt-4">
         <SectionTitle>全問共通の設定</SectionTitle>
@@ -87,7 +98,7 @@ export function QuestionInspector({ question, index, baseSettings, passphrase, o
         </button>
       </div>
 
-      <Field label="出題文" hint="画面に大きく表示されるシャッフル済み文字列">
+      <Field label="出題文" hint="画面に大きく表示されるシャッフル済み文字列。画像に文字が描かれていれば空欄でよい">
         <div className="mt-1 flex gap-2">
           <input value={question.prompt} onChange={(e) => onChange({ prompt: e.target.value })} placeholder="例: ごんり" className={`${inputClass} mt-0 text-lg font-bold tracking-widest`} />
           <Button type="button" variant="secondary" icon={Shuffle} disabled={!primary} onClick={() => onChange({ prompt: shuffleAnagram(primary) })} aria-label="正解からシャッフル生成" className="shrink-0">生成</Button>

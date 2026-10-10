@@ -12,7 +12,7 @@ export interface QuestionSettings {
 export interface Question {
   id: string;
   type: "anagram";
-  prompt: string;
+  prompt: string;              // 画像に問題の文字が描かれている場合は空にできる
   answers: string[];
   hint?: string;
   imageUrl?: string;           // /api/images/<key>（R2 に保存した問題画像）
@@ -23,6 +23,7 @@ export interface QuestionSet {
   id: string;
   name: string;                // 企画名
   coverImageUrl?: string;      // タイトルスライドの画像
+  slideBackground?: string;    // 問題スライドの背景色（#rrggbb）。画像の地の色に合わせる用途
   settings: QuestionSettings;
   questions: Question[];
 }

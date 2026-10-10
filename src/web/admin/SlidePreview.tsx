@@ -1,5 +1,6 @@
 import { Timer } from "lucide-react";
 import type { Question, QuestionSettings } from "../../shared/types";
+import { isLightColor } from "../lib/color";
 
 /**
  * GM 画面に映る見た目を模した 16:9 のスライドプレビュー。
@@ -26,14 +27,15 @@ export function TitleSlidePreview({ name, coverImageUrl, questionCount, settings
   );
 }
 
-export function QuestionSlidePreview({ question, index, total, settings, compact = false }: {
-  question: Question; index: number; total: number; settings: QuestionSettings; compact?: boolean;
+export function QuestionSlidePreview({ question, index, total, settings, background, compact = false }: {
+  question: Question; index: number; total: number; settings: QuestionSettings; background?: string; compact?: boolean;
 }) {
   const hasImage = !!question.imageUrl;
+  const light = !!background && isLightColor(background);
   return (
     <SlideFrame>
-      <div className="flex h-full flex-col px-[4cqw] py-[3cqw]">
-        <div className="flex items-center justify-between text-[2.4cqw] font-bold text-slate-400">
+      <div className={`flex h-full flex-col px-[4cqw] py-[3cqw] ${light ? "text-slate-800" : ""}`} style={background ? { backgroundColor: background } : undefined}>
+        <div className={`flex items-center justify-between text-[2.4cqw] font-bold ${light ? "text-slate-500" : "text-slate-400"}`}>
           <span>第{index + 1}問 / {total}問</span>
           {!compact && settings.timerMode !== "none" && (
             <span className="inline-flex items-center gap-[0.6cqw] rounded-[1.2cqw] bg-amber-100 px-[1.6cqw] py-[0.4cqw] text-amber-900">
@@ -42,10 +44,12 @@ export function QuestionSlidePreview({ question, index, total, settings, compact
           )}
         </div>
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[2cqw]">
-          {hasImage && <img src={question.imageUrl} alt="" className="min-h-0 max-h-[52cqw] w-auto max-w-full flex-1 rounded-[1.5cqw] object-contain" />}
-          <p className={`break-all text-center font-black leading-tight tracking-widest ${
-            question.prompt ? (hasImage ? "text-[6cqw]" : "text-[9cqw]") : "text-[4cqw] text-slate-500"
-          }`}>{question.prompt || "出題文を入力"}</p>
+          {hasImage && <img src={question.imageUrl} alt="" className="min-h-0 w-auto max-w-full flex-1 rounded-[1.5cqw] object-contain" />}
+          {(question.prompt || !hasImage) && (
+            <p className={`break-all text-center font-black leading-tight tracking-widest ${
+              question.prompt ? (hasImage ? "text-[6cqw]" : "text-[9cqw]") : "text-[4cqw] text-slate-500"
+            }`}>{question.prompt || "出題文を入力"}</p>
+          )}
           {!compact && question.hint && <p className="text-[2.4cqw] text-slate-400">ヒント: {question.hint}</p>}
         </div>
       </div>
