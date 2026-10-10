@@ -3,6 +3,8 @@
 GMがPCで進行し、参加者がスマートフォンからQRコードで入室して回答するリアルタイムクイズ。
 設計: `docs/superpowers/specs/2026-10-05-quizjam-design.md` / デザイン: `docs/design-guide.md`
 
+本番: https://quizjam.franc-app.workers.dev/ （管理画面: https://quizjam.franc-app.workers.dev/admin ）
+
 ## 開発
 
 ```bash
@@ -16,6 +18,7 @@ npm run typecheck
 
 - GM トップ: `/`　管理画面: `/admin`（合言葉は `.dev.vars` の値）
 - 管理画面はスライド形式のエディタ。左にスライド一覧、中央に GM 画面と同じ見た目のプレビュー、右に選択中スライドの内容。タイトルスライド（企画名・表紙画像・全問共通の設定）のあと、1問ずつスライドを追加して正解・出題文・画像・ヒント・個別設定を入力する
+- 画像に問題の文字が描かれている問題は、出題文を空欄にできる（画像だけを大きく表示する）。タイトルスライドの「問題スライドの背景色」を画像の地の色に合わせると、GM 画面で画像が背景になじむ
 - 画像は R2（`quizjam-images`）に保存される。ローカルでは wrangler がエミュレートするので追加設定は不要
 - 参加者: GM 画面の QR か `/play/<ルームコード>`
 - `wrangler.jsonc` を変更したら `npm run cf-typegen` で型を再生成する

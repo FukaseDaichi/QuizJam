@@ -113,6 +113,7 @@ export class GameEngine {
       prompt: q.prompt,
       hint: q.hint,
       imageUrl: q.imageUrl,
+      background: set.slideBackground,
       deadlineAt: this.s.deadlineAt,
       maxAttempts: this.settings().maxAttempts,
     };

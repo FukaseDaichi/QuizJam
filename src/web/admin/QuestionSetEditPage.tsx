@@ -23,7 +23,7 @@ function newQuestion(): Question {
   return { id: crypto.randomUUID(), type: "anagram", prompt: "", answers: [""] };
 }
 
-interface Draft { name: string; coverImageUrl?: string; settings: QuestionSettings; questions: Question[] }
+interface Draft { name: string; coverImageUrl?: string; slideBackground?: string; settings: QuestionSettings; questions: Question[] }
 
 const EMPTY_DRAFT: Draft = { name: "", settings: DEFAULT_SETTINGS, questions: [newQuestion()] };
 
@@ -33,13 +33,13 @@ function findProblem(d: Draft): { slide: Selection; message: string } | null {
   if (d.questions.length === 0) return { slide: "title", message: "問題を1問以上追加してください" };
   for (const [i, q] of d.questions.entries()) {
     if (!q.answers.some((a) => a.trim())) return { slide: i, message: `第${i + 1}問の正解を入力してください` };
-    if (!q.prompt.trim()) return { slide: i, message: `第${i + 1}問の出題文を入力してください（「生成」で正解から作れます）` };
+    if (!q.prompt.trim() && !q.imageUrl) return { slide: i, message: `第${i + 1}問の出題文か画像を入れてください（出題文は「生成」で正解から作れます）` };
   }
   return null;
 }
 
 function questionIncomplete(q: Question): boolean {
-  return !q.prompt.trim() || !q.answers.some((a) => a.trim());
+  return (!q.prompt.trim() && !q.imageUrl) || !q.answers.some((a) => a.trim());
 }
 
 function toInput(d: Draft): QuestionSetInput | { error: string } {
@@ -51,7 +51,7 @@ function toInput(d: Draft): QuestionSetInput | { error: string } {
 }
 
 function fromSet(s: QuestionSet | QuestionSetInput): Draft {
-  return { name: s.name, coverImageUrl: s.coverImageUrl, settings: { ...DEFAULT_SETTINGS, ...s.settings }, questions: s.questions.length ? s.questions : [newQuestion()] };
+  return { name: s.name, coverImageUrl: s.coverImageUrl, slideBackground: s.slideBackground, settings: { ...DEFAULT_SETTINGS, ...s.settings }, questions: s.questions.length ? s.questions : [newQuestion()] };
 }
 
 function Editor({ passphrase }: { passphrase: string }) {
@@ -206,7 +206,7 @@ function Editor({ passphrase }: { passphrase: string }) {
                 <li key={q.id} ref={registerThumb(q.id)}>
                   <button type="button" onClick={() => setSelected(i)} className={thumbClass(selected === i)} aria-current={selected === i ? "true" : undefined} aria-label={`第${i + 1}問${incomplete ? "（未入力あり）" : ""}`}>
                     <span className="w-5 shrink-0 pt-0.5 text-right text-xs font-bold text-slate-400">{i + 1}</span>
-                    <span className="min-w-0 flex-1"><QuestionSlidePreview question={q} index={i} total={total} settings={resolveSettings({ id: "", ...draft }, i)} compact /></span>
+                    <span className="min-w-0 flex-1"><QuestionSlidePreview question={q} index={i} total={total} settings={resolveSettings({ id: "", ...draft }, i)} background={draft.slideBackground} compact /></span>
                     {incomplete && <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-slate-900" aria-hidden />}
                   </button>
                 </li>
@@ -223,7 +223,7 @@ function Editor({ passphrase }: { passphrase: string }) {
           <div className="w-full max-w-4xl">
             {selected === "title"
               ? <TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} />
-              : current && <QuestionSlidePreview question={current} index={selected} total={total} settings={resolveSettings({ id: "", ...draft }, selected)} />}
+              : current && <QuestionSlidePreview question={current} index={selected} total={total} settings={resolveSettings({ id: "", ...draft }, selected)} background={draft.slideBackground} />}
           </div>
           <div className="flex items-center gap-2 text-slate-300">
             <button type="button" onClick={goPrev} disabled={selected === "title"} className="rounded-xl p-2 hover:bg-slate-800 disabled:opacity-30" aria-label="前のスライド"><ChevronLeft size={22} /></button>
@@ -247,8 +247,9 @@ function Editor({ passphrase }: { passphrase: string }) {
         <aside className="min-h-0 overflow-y-auto border-l border-slate-800 p-5">
           <h2 className="mb-4 text-lg font-black">{selected === "title" ? "タイトルスライド" : `第${selected + 1}問`}</h2>
           {selected === "title" ? (
-            <TitleInspector name={draft.name} coverImageUrl={draft.coverImageUrl} settings={settings} passphrase={passphrase}
-              onName={(name) => patch({ name })} onCover={(coverImageUrl) => patch({ coverImageUrl })} onSettings={(s) => patch({ settings: s })} />
+            <TitleInspector name={draft.name} coverImageUrl={draft.coverImageUrl} slideBackground={draft.slideBackground} settings={settings} passphrase={passphrase}
+              onName={(name) => patch({ name })} onCover={(coverImageUrl) => patch({ coverImageUrl })} onSlideBackground={(slideBackground) => patch({ slideBackground })}
+              onSettings={(s) => patch({ settings: s })} />
           ) : current && (
             <QuestionInspector key={current.id} question={current} index={selected} baseSettings={settings} passphrase={passphrase} onChange={(p) => updateQuestion(selected, p)} />
           )}

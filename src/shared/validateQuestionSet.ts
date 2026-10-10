@@ -10,6 +10,10 @@ export function isValidImageUrl(x: unknown): x is string {
   return typeof x === "string" && x.length > 0 && x.length <= 500 && (/^\/api\/images\/[A-Za-z0-9._-]+$/.test(x) || /^https:\/\//.test(x));
 }
 
+export function isValidColor(x: unknown): x is string {
+  return typeof x === "string" && /^#[0-9a-fA-F]{6}$/.test(x);
+}
+
 function optionalImageUrl(x: unknown, field: string): string | undefined | { error: string } {
   if (x === undefined || x === null || x === "") return undefined;
   return isValidImageUrl(x) ? x : { error: `${field} invalid` };
@@ -36,17 +40,22 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
   if ("error" in settings) return settings;
   const coverImageUrl = optionalImageUrl(o.coverImageUrl, "coverImageUrl");
   if (typeof coverImageUrl === "object") return coverImageUrl;
+  const slideBackground = o.slideBackground === undefined || o.slideBackground === null || o.slideBackground === "" ? undefined : o.slideBackground;
+  if (slideBackground !== undefined && !isValidColor(slideBackground)) return { error: "slideBackground invalid" };
   if (!Array.isArray(o.questions)) return { error: "questions must be an array" };
   const questions: Question[] = [];
   for (const [i, q] of (o.questions as unknown[]).entries()) {
     if (typeof q !== "object" || q === null) return { error: `questions[${i}] invalid` };
     const qq = q as Record<string, unknown>;
-    if (typeof qq.prompt !== "string" || qq.prompt.length === 0) return { error: `questions[${i}].prompt is required` };
+    const imageUrl = optionalImageUrl(qq.imageUrl, "imageUrl");
+    if (typeof imageUrl === "object") return { error: `questions[${i}].${imageUrl.error}` };
+    // 出題文は画像があれば省略できる（画像の中に文字が描かれている問題）
+    if (qq.prompt !== undefined && typeof qq.prompt !== "string") return { error: `questions[${i}].prompt invalid` };
+    const prompt = typeof qq.prompt === "string" ? qq.prompt : "";
+    if (prompt.length === 0 && !imageUrl) return { error: `questions[${i}].prompt is required` };
     if (!Array.isArray(qq.answers) || qq.answers.length === 0 || !qq.answers.every((a) => typeof a === "string" && a.length > 0)) {
       return { error: `questions[${i}].answers must be a non-empty string array` };
     }
-    const imageUrl = optionalImageUrl(qq.imageUrl, "imageUrl");
-    if (typeof imageUrl === "object") return { error: `questions[${i}].${imageUrl.error}` };
     let overrides: Partial<QuestionSettings> | undefined;
     if (qq.overrides !== undefined) {
       const v = validateSettings(qq.overrides, true);
@@ -56,12 +65,12 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
     questions.push({
       id: typeof qq.id === "string" && qq.id ? qq.id : crypto.randomUUID(),
       type: "anagram",
-      prompt: qq.prompt,
+      prompt,
       answers: qq.answers as string[],
       hint: typeof qq.hint === "string" && qq.hint ? qq.hint : undefined,
       imageUrl,
       overrides,
     });
   }
-  return { name: o.name.trim(), coverImageUrl, settings: settings as QuestionSettings, questions };
+  return { name: o.name.trim(), coverImageUrl, slideBackground, settings: settings as QuestionSettings, questions };
 }
