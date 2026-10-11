@@ -74,6 +74,13 @@ async function seedSet(overrides: Partial<typeof DEFAULT_SETTINGS> = {}) {
   });
 }
 
+/** 開始してタイトルスライドを飛ばし、第1問が始まるまで進める（説明スライドの無いセット用） */
+async function startGame(gm: Client, questionSetId: string, carryOverScores = false) {
+  gm.send({ type: "start", questionSetId, carryOverScores });
+  await gm.waitFor("introStarted");
+  gm.send({ type: "next" });
+}
+
 describe("Room DO lifecycle", () => {
   it("init is required before join and exists", async () => {
     expect((await stubFor("NEW001").fetch("http://room/exists")).status).toBe(404);
@@ -133,7 +140,7 @@ describe("Room DO game flow", () => {
     const c2 = await connect("GAME01", p2.participantToken);
     await c1.waitFor("state"); await c2.waitFor("state");
 
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     const qs = await c1.waitFor("questionStarted");
     expect(qs.question).toMatchObject({ index: 0, total: 2, prompt: "ごんり", deadlineAt: null });
     await c2.waitFor("questionStarted");
@@ -198,7 +205,7 @@ describe("Room DO game flow", () => {
     await initRoom("ALRM01");
     const gm = await connect("ALRM01", "gm-token");
     await gm.waitFor("state");
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     const qs = await gm.waitFor("questionStarted");
     expect(qs.question.deadlineAt).not.toBeNull();
     const ran = await runDurableObjectAlarm(stubFor("ALRM01"));
@@ -217,7 +224,7 @@ describe("Room DO game flow", () => {
     const p1 = await join("DONE01", "みさき");
     const c1 = await connect("DONE01", p1.participantToken);
     await c1.waitFor("state");
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     await c1.waitFor("questionStarted");
     c1.send({ type: "answer", text: "ごりら" });
     await c1.waitFor("answerResult");
@@ -286,7 +293,7 @@ describe("Room DO GM live controls", () => {
     const c1 = await connect("LIVE02", p1.participantToken);
     await c1.waitFor("state");
 
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     const q0 = await gm.waitFor("questionStarted");
     const startedAt = q0.question.deadlineAt! - 30_000;
     // 開始時に実際に効く設定が配られる
@@ -295,11 +302,13 @@ describe("Room DO GM live controls", () => {
     await c1.waitFor("settingsUpdated");
 
     gm.send({ type: "updateSettings", settings: { timerSeconds: 5, maxAttempts: null } });
-    const upd = await gm.waitFor("settingsUpdated");
+    // start（タイトル）と第1問の開始で settingsUpdated が2回届いているので、上書き入りのものを待つ
+    const isOverride = (m: { settings: { override: { timerSeconds?: number } } }) => m.settings.override.timerSeconds === 5;
+    const upd = await gm.waitFor("settingsUpdated", isOverride);
     expect(upd.settings.override).toEqual({ timerSeconds: 5, maxAttempts: null });
     expect(upd.settings.effective).toEqual({ timerMode: "fixed", timerSeconds: 5, maxAttempts: null, wrongPenalty: 0, basePoints: 100, rankBonus: [50, 30, 10] });
     // 参加者にも届き、残り回答回数の表示に使う maxAttempts が今の問題に反映される
-    const updP = await c1.waitFor("settingsUpdated");
+    const updP = await c1.waitFor("settingsUpdated", isOverride);
     expect(updP.settings.effective?.maxAttempts).toBeNull();
 
     gm.send({ type: "close" });
@@ -323,7 +332,7 @@ describe("Room DO GM live controls", () => {
     const p1 = await join("LIVE25", "みさき");
     const c1 = await connect("LIVE25", p1.participantToken);
     await c1.waitFor("state");
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     expect((await gm.waitFor("questionStarted")).question.deadlineAt).toBeNull();
 
     const before = Date.now();
@@ -343,7 +352,7 @@ describe("Room DO GM live controls", () => {
     await initRoom("LIVE26");
     const gm = await connect("LIVE26", "gm-token");
     await gm.waitFor("state");
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     expect((await gm.waitFor("questionStarted")).question.deadlineAt).not.toBeNull();
 
     const p1 = await join("LIVE26", "みさき");
@@ -368,7 +377,7 @@ describe("Room DO GM live controls", () => {
     await initRoom("LIVE27");
     const gm = await connect("LIVE27", "gm-token");
     await gm.waitFor("state");
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     const q = await gm.waitFor("questionStarted");
     gm.send({ type: "updateSettings", settings: { timerSeconds: 5 } });
     await gm.waitFor("settingsUpdated");
@@ -432,7 +441,7 @@ describe("Room DO GM live controls", () => {
     const c1 = await connect("LIVE15", p1.participantToken);
     const c2 = await connect("LIVE15", p2.participantToken);
     await c1.waitFor("state"); await c2.waitFor("state");
-    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await startGame(gm, set.id);
     await c1.waitFor("questionStarted"); await c2.waitFor("questionStarted");
     c1.send({ type: "answer", text: "りんご" });
     await c1.waitFor("answerResult");
@@ -441,5 +450,113 @@ describe("Room DO GM live controls", () => {
     await gm.waitFor("participantRemoved");
     const closed = await gm.waitFor("questionClosed");
     expect(closed.result.results.map((r) => r.participantId)).toEqual([p1.participantId]);
+  });
+});
+
+describe("Room DO intro slides", () => {
+  async function seedSetWithIntro() {
+    return createQuestionSet(testEnv.DB, {
+      name: "イントロ",
+      settings: { ...DEFAULT_SETTINGS, timerMode: "fixed", timerSeconds: 1 },
+      introSlides: [{ id: "s1", heading: "ルール", body: "3回まで" }],
+      questions: [{ id: "q1", type: "anagram", prompt: "ごんり", answers: ["りんご"] }],
+    });
+  }
+
+  it("start shows the title, next shows each slide, then question 1 arms the deadline alarm", async () => {
+    const set = await seedSetWithIntro();
+    await initRoom("INTR01");
+    const gm = await connect("INTR01", "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join("INTR01", "みさき");
+    const c1 = await connect("INTR01", p1.participantToken);
+    await c1.waitFor("state");
+
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    const title = await c1.waitFor("introStarted");
+    expect(title.intro).toMatchObject({ index: 0, total: 2, slide: { kind: "title", name: "イントロ", questionCount: 1, settings: { timerSeconds: 1 } } });
+    expect((await gm.waitFor("introStarted")).intro.index).toBe(0);
+    expect((await gm.waitFor("settingsUpdated")).settings.effective?.timerSeconds).toBe(1);
+
+    // intro 中に再接続すると state に intro が入り、question は無い
+    const gm2 = await connect("INTR01", "gm-token");
+    const st = await gm2.waitFor("state");
+    expect(st.phase).toBe("intro");
+    expect(st.intro?.index).toBe(0);
+    expect(st.question).toBeNull();
+
+    // intro 中は回答も締切も再開始もできない
+    c1.send({ type: "answer", text: "りんご" });
+    expect((await c1.waitFor("error")).code).toBe("not_in_question");
+    gm.send({ type: "close" });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+
+    gm.send({ type: "next" });
+    const slide = await c1.waitFor("introStarted", (m) => m.intro.index === 1);
+    expect(slide.intro.slide).toEqual({ kind: "slide", heading: "ルール", body: "3回まで", imageUrl: undefined });
+
+    gm.send({ type: "next" });
+    const qs = await c1.waitFor("questionStarted");
+    expect(qs.question).toMatchObject({ index: 0, prompt: "ごんり" });
+    expect(qs.question.deadlineAt).not.toBeNull();
+    // 第1問に入った時点で締切アラームが張られている
+    expect(await runDurableObjectAlarm(stubFor("INTR01"))).toBe(true);
+    await c1.waitFor("questionClosed");
+  });
+
+  it("the alarm during intro is the 24h cleanup, not a deadline", async () => {
+    const set = await seedSetWithIntro();
+    await initRoom("INTR02");
+    const gm = await connect("INTR02", "gm-token");
+    await gm.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await gm.waitFor("introStarted");
+    expect(await runDurableObjectAlarm(stubFor("INTR02"))).toBe(true);
+    // cleanup が走ったのでルームは消えている
+    expect((await stubFor("INTR02").fetch("http://room/exists")).status).toBe(404);
+  });
+
+  it("updateSettings during intro only broadcasts settingsUpdated and the title reflects it", async () => {
+    const set = await seedSetWithIntro();
+    await initRoom("INTR03");
+    const gm = await connect("INTR03", "gm-token");
+    await gm.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await gm.waitFor("introStarted");
+    gm.send({ type: "updateSettings", settings: { maxAttempts: 5 } });
+    const su = await gm.waitFor("settingsUpdated", (m) => m.settings.override.maxAttempts === 5);
+    expect(su.settings.effective?.maxAttempts).toBe(5);
+    expect(gm.received.some((m) => m.type === "deadlineSet")).toBe(false);
+    const gm2 = await connect("INTR03", "gm-token");
+    const st = await gm2.waitFor("state");
+    expect(st.intro?.slide).toMatchObject({ kind: "title", settings: { maxAttempts: 5 } });
+  });
+
+  it("start from finalResult shows the title again and keeps scores when carrying over", async () => {
+    const set = await seedSet({ timerMode: "none" });
+    await initRoom("INTR04");
+    const gm = await connect("INTR04", "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join("INTR04", "みさき");
+    const c1 = await connect("INTR04", p1.participantToken);
+    await c1.waitFor("state");
+    await startGame(gm, set.id);
+    await c1.waitFor("questionStarted");
+    c1.send({ type: "answer", text: "りんご" });
+    await c1.waitFor("answerResult");
+    gm.send({ type: "close" }); await gm.waitFor("questionClosed");
+    gm.send({ type: "next" }); await gm.waitFor("questionStarted", (m) => m.question.index === 1);
+    gm.send({ type: "close" }); await gm.waitFor("questionClosed", (m) => m.result.answers[0] === "ばなな");
+    gm.send({ type: "next" }); await gm.waitFor("finalResult");
+
+    // ここまでに届いた leaderboard を捨て、2ゲーム目の開始で届くものだけを見る
+    gm.received.length = 0;
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: true });
+    const title = await c1.waitFor("introStarted");
+    expect(title.intro.slide.kind).toBe("title");
+    const lb = await gm.waitFor("leaderboard", (m) => m.entries[0]?.nickname === "みさき");
+    expect(lb.entries[0].score).toBe(150);
   });
 });

@@ -113,6 +113,7 @@ export interface StateMessage {
   phase: Phase;
   participants: Participant[];
   leaderboard: LeaderboardEntry[];
+  intro: IntroView | null;               // intro フェーズのみ
   question: QuestionView | null;
   questionResult: QuestionResultView | null;
   me: (Participant & { status: MyAnswerStatus | null }) | null;
@@ -139,6 +140,7 @@ export type ServerMessage =
   | { type: "participantRemoved"; participant: Participant }
   | { type: "kicked" }
   | { type: "settingsUpdated"; settings: SettingsView }
+  | { type: "introStarted"; intro: IntroView }
   | { type: "questionStarted"; question: QuestionView }
   | { type: "deadlineSet"; deadlineAt: number | null }
   | { type: "answerResult"; correct: boolean; correctRank: number | null; remainingAttempts: number | null; points: number }
