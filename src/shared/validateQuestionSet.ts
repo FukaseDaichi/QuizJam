@@ -81,6 +81,8 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
     const qq = q as Record<string, unknown>;
     const imageUrl = optionalImageUrl(qq.imageUrl, "imageUrl");
     if (typeof imageUrl === "object") return { error: `questions[${i}].${imageUrl.error}` };
+    const explanationImageUrl = optionalImageUrl(qq.explanationImageUrl, "explanationImageUrl");
+    if (typeof explanationImageUrl === "object") return { error: `questions[${i}].${explanationImageUrl.error}` };
     // 出題文は画像があれば省略できる（画像の中に文字が描かれている問題）
     if (qq.prompt !== undefined && typeof qq.prompt !== "string") return { error: `questions[${i}].prompt invalid` };
     const prompt = typeof qq.prompt === "string" ? qq.prompt.trim() : "";
@@ -101,6 +103,7 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       answers: qq.answers as string[],
       hint: typeof qq.hint === "string" && qq.hint ? qq.hint : undefined,
       imageUrl,
+      explanationImageUrl,
       overrides,
     });
   }

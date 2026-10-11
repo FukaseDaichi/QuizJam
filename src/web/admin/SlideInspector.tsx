@@ -123,6 +123,8 @@ export function QuestionInspector({ question, index, baseSettings, passphrase, o
 
       <ImageField label="問題画像（任意）" value={question.imageUrl} onChange={(imageUrl) => onChange({ imageUrl })} passphrase={passphrase} />
 
+      <ImageField label="解説画像（任意・問題結果の画面に表示）" value={question.explanationImageUrl} onChange={(explanationImageUrl) => onChange({ explanationImageUrl })} passphrase={passphrase} />
+
       <Field label="ヒント（任意）" hint="参加者が「ヒントを見る」を押すと表示">
         <textarea rows={2} value={question.hint ?? ""} onChange={(e) => onChange({ hint: e.target.value || undefined })} className={textareaClass} />
       </Field>

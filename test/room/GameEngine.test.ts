@@ -13,7 +13,7 @@ function makeSet(overrides: Partial<QuestionSet["settings"]> = {}): QuestionSet 
     settings: { ...DEFAULT_SETTINGS, ...overrides },
     questions: [
       { id: "q1", type: "anagram", prompt: "ごんり", answers: ["りんご", "林檎"] },
-      { id: "q2", type: "anagram", prompt: "なばな", answers: ["ばなな"], imageUrl: "/api/images/banana.png" },
+      { id: "q2", type: "anagram", prompt: "なばな", answers: ["ばなな"], imageUrl: "/api/images/banana.png", explanationImageUrl: "/api/images/banana-why.png" },
     ],
   };
 }
@@ -233,6 +233,20 @@ describe("GameEngine close / next / final", () => {
       ],
     });
     expect(e.questionResult()).toEqual(result);
+  });
+
+  it("questionResult carries the explanation image only when the question has one", () => {
+    expect(e.closeQuestion(T0 + 1).explanationImageUrl).toBeUndefined();
+    e.next(T0 + 2);
+    expect(e.closeQuestion(T0 + 3)).toMatchObject({ answers: ["ばなな"], explanationImageUrl: "/api/images/banana-why.png" });
+  });
+
+  it("the question view never includes the explanation image", () => {
+    e.closeQuestion(T0 + 1);
+    const r = e.next(T0 + 2);
+    if (r.kind !== "question") throw new Error("expected question");
+    expect(r.question).not.toHaveProperty("explanationImageUrl");
+    expect(e.currentQuestionView()).not.toHaveProperty("explanationImageUrl");
   });
 
   it("closeQuestion throws outside question phase", () => {

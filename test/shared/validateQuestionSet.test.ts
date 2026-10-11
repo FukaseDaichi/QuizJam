@@ -20,6 +20,23 @@ describe("validateQuestionSetInput", () => {
     expect(v).toEqual({ error: "questions[0].imageUrl invalid" });
   });
 
+  it("keeps a valid explanation image URL on the question", () => {
+    const v = validateQuestionSetInput({ ...base, questions: [{ prompt: "ごんり", answers: ["りんご"], explanationImageUrl: "/api/images/why.png" }] });
+    expect("error" in v ? v.error : v.questions[0].explanationImageUrl).toBe("/api/images/why.png");
+  });
+
+  it("treats an empty explanation image URL as none and rejects an invalid one", () => {
+    const ok = validateQuestionSetInput({ ...base, questions: [{ prompt: "ごんり", answers: ["りんご"], explanationImageUrl: "" }] });
+    expect("error" in ok ? ok.error : ok.questions[0].explanationImageUrl).toBeUndefined();
+    const bad = validateQuestionSetInput({ ...base, questions: [{ prompt: "ごんり", answers: ["りんご"], explanationImageUrl: "javascript:alert(1)" }] });
+    expect(bad).toEqual({ error: "questions[0].explanationImageUrl invalid" });
+  });
+
+  it("does not let an explanation image stand in for a missing prompt", () => {
+    const v = validateQuestionSetInput({ ...base, questions: [{ prompt: "", answers: ["りんご"], explanationImageUrl: "/api/images/why.png" }] });
+    expect(v).toEqual({ error: "questions[0].prompt is required" });
+  });
+
   it("accepts a #rrggbb slide background and rejects other values", () => {
     const questions = [{ prompt: "ごんり", answers: ["りんご"] }];
     const ok = validateQuestionSetInput({ ...base, slideBackground: "#FBF1DD", questions });

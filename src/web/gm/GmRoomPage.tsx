@@ -57,6 +57,8 @@ export function GmRoomPage() {
   const light = !!q?.background && isLightColor(q.background);
   // 画像はヘッダーやカード内の表示を除いた残りの高さいっぱいに。出題文・結果パネルがあるときはその分だけ縮める
   const imageHeight = state.phase === "questionResult" ? "max-h-[calc(100vh-36rem)]" : q?.prompt ? "max-h-[calc(100vh-30rem)]" : "max-h-[calc(100vh-24rem)]";
+  // 結果表示中に解説画像があれば、問題画像と出題文の代わりに解説画像だけを映す
+  const explanationImageUrl = state.phase === "questionResult" ? state.questionResult?.explanationImageUrl : undefined;
 
   return (
     <main className="grid min-h-full grid-rows-[auto_1fr_auto] bg-slate-900 text-slate-100">
@@ -111,9 +113,15 @@ export function GmRoomPage() {
                 <span className="text-xl font-bold">第{q.index + 1}問 / {q.total}問</span>
                 {state.phase === "question" && <CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} size="lg" />}
               </div>
-              <div key={q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">
-                {q.imageUrl && <img src={q.imageUrl} alt="" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />}
-                {q.prompt && <p className={`break-all text-center font-black leading-tight tracking-widest ${q.imageUrl ? "text-5xl" : "text-7xl"}`}>{q.prompt}</p>}
+              <div key={explanationImageUrl ? `${q.index}-explanation` : q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">
+                {explanationImageUrl ? (
+                  <img src={explanationImageUrl} alt="解説" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />
+                ) : (
+                  <>
+                    {q.imageUrl && <img src={q.imageUrl} alt="" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />}
+                    {q.prompt && <p className={`break-all text-center font-black leading-tight tracking-widest ${q.imageUrl ? "text-5xl" : "text-7xl"}`}>{q.prompt}</p>}
+                  </>
+                )}
               </div>
               {state.phase === "question" && (
                 <p className={`text-center text-xl ${light ? "text-slate-600" : "text-slate-300"}`}>正解者 {state.correctCountThisQuestion} / 参加者 {connectedCount}</p>

@@ -7,7 +7,7 @@
 | データ | 保存先 | 理由 |
 |---|---|---|
 | 問題セット（永続） | D1 `quizjam-db` | ルームをまたいで再利用する |
-| 問題・表紙の画像 | R2 `quizjam-images` | D1 の行サイズ制限を避け、長期キャッシュで配信する |
+| 問題・解説・表紙の画像 | R2 `quizjam-images` | D1 の行サイズ制限を避け、長期キャッシュで配信する |
 | ルーム進行状態（参加者・現在の問題・回答・スコア・ライブ設定） | ルームの Durable Object 内 SQLite | 1ルーム1オブジェクトで強い整合性。再起動後も復元できる |
 | GM トークン・参加者トークン（ブラウザ側） | localStorage | リロード・再接続時に同じ GM／参加者として復帰する |
 
@@ -48,6 +48,7 @@ interface Question {
   answers: string[];           // 正解候補（複数可）
   hint?: string;
   imageUrl?: string;           // 問題画像。GM・参加者画面で出題文の上に表示
+  explanationImageUrl?: string; // 解説画像。問題結果画面でだけ表示する
   overrides?: Partial<QuestionSettings>;
 }
 
@@ -63,12 +64,12 @@ API 受信時とインポート時に同じ検証を適用する。
 
 - `name` は必須（前後空白を除いて1文字以上）
 - `settings` は省略可。指定したキーだけ検証し、残りは既定値で補う。`timerMode` は3モードのいずれか、`timerSeconds` は 0 以上、`maxAttempts` は `null` か 1 以上
-- `coverImageUrl` / `imageUrl` は `/api/images/<key>` か `https://` で始まる 500 文字以内の URL
+- `coverImageUrl` / `imageUrl` / `explanationImageUrl` は `/api/images/<key>` か `https://` で始まる 500 文字以内の URL
 - `slideBackground` は `#rrggbb`
 - `introSlides` は省略可。20件まで。各要素は `heading`（100文字以内）・`body`（1000文字以内）・`imageUrl` のいずれか1つが必須。`heading` / `body` / `prompt` は前後の空白を除いて保存し、空白だけなら無指定として扱う。`introSlides` が空なら保存時に省略する
 - `introSlides[].id` が無ければサーバーが UUID を採番する
 - `questions[].answers` は空でない文字列の配列（1件以上）
-- `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する
+- `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する（`explanationImageUrl` は出題文の代わりにならない）
 - `questions[].id` が無ければサーバーが UUID を採番する
 
 ### D1 スキーマ

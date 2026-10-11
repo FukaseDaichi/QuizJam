@@ -96,6 +96,7 @@ export interface MyAnswerStatus {
 
 export interface QuestionResultView {
   answers: string[];
+  explanationImageUrl?: string;   // 問題に解説画像があれば。結果表示中にだけ届く
   results: { participantId: string; nickname: string; correctRank: number; points: number }[];
 }
 
