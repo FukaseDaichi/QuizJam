@@ -23,11 +23,20 @@ export interface Question {
   overrides?: Partial<QuestionSettings>;
 }
 
+/** ゲーム冒頭、タイトルの後に映す説明スライド。見出し・本文・画像のどれか1つは必須 */
+export interface IntroSlide {
+  id: string;
+  heading?: string;            // 100文字まで
+  body?: string;               // 複数行可。1000文字まで
+  imageUrl?: string;           // /api/images/<key> か https://
+}
+
 export interface QuestionSet {
   id: string;
   name: string;                // 企画名
   coverImageUrl?: string;      // タイトルスライドの画像
   slideBackground?: string;    // 問題スライドの背景色（#rrggbb）。画像の地の色に合わせる用途
+  introSlides?: IntroSlide[];  // 省略時は無し。20枚まで
   settings: QuestionSettings;
   questions: Question[];
 }

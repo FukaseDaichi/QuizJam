@@ -1,4 +1,4 @@
-import type { Question, QuestionSet, QuestionSettings } from "./types";
+import type { IntroSlide, Question, QuestionSet, QuestionSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./defaults";
 
 export type QuestionSetInput = Omit<QuestionSet, "id">;
@@ -17,6 +17,35 @@ export function isValidColor(x: unknown): x is string {
 function optionalImageUrl(x: unknown, field: string): string | undefined | { error: string } {
   if (x === undefined || x === null || x === "") return undefined;
   return isValidImageUrl(x) ? x : { error: `${field} invalid` };
+}
+
+const MAX_INTRO_SLIDES = 20;
+
+/** 省略・空文字は undefined。文字列でないか長すぎれば null */
+function optionalText(x: unknown, max: number): string | undefined | null {
+  if (x === undefined || x === null || x === "") return undefined;
+  if (typeof x !== "string" || x.length > max) return null;
+  return x;
+}
+
+function validateIntroSlides(x: unknown): IntroSlide[] | { error: string } {
+  if (x === undefined || x === null) return [];
+  if (!Array.isArray(x)) return { error: "introSlides must be an array" };
+  if (x.length > MAX_INTRO_SLIDES) return { error: `introSlides must have at most ${MAX_INTRO_SLIDES} items` };
+  const out: IntroSlide[] = [];
+  for (const [i, s] of (x as unknown[]).entries()) {
+    if (typeof s !== "object" || s === null) return { error: `introSlides[${i}] invalid` };
+    const o = s as Record<string, unknown>;
+    const heading = optionalText(o.heading, 100);
+    if (heading === null) return { error: `introSlides[${i}].heading invalid` };
+    const body = optionalText(o.body, 1000);
+    if (body === null) return { error: `introSlides[${i}].body invalid` };
+    const imageUrl = optionalImageUrl(o.imageUrl, "imageUrl");
+    if (typeof imageUrl === "object") return { error: `introSlides[${i}].${imageUrl.error}` };
+    if (!heading && !body && !imageUrl) return { error: `introSlides[${i}] is empty` };
+    out.push({ id: typeof o.id === "string" && o.id ? o.id : crypto.randomUUID(), heading, body, imageUrl });
+  }
+  return out;
 }
 
 function validateSettings(x: unknown, partial: boolean): QuestionSettings | Partial<QuestionSettings> | { error: string } {
@@ -42,6 +71,8 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
   if (typeof coverImageUrl === "object") return coverImageUrl;
   const slideBackground = o.slideBackground === undefined || o.slideBackground === null || o.slideBackground === "" ? undefined : o.slideBackground;
   if (slideBackground !== undefined && !isValidColor(slideBackground)) return { error: "slideBackground invalid" };
+  const introSlides = validateIntroSlides(o.introSlides);
+  if (!Array.isArray(introSlides)) return introSlides;
   if (!Array.isArray(o.questions)) return { error: "questions must be an array" };
   const questions: Question[] = [];
   for (const [i, q] of (o.questions as unknown[]).entries()) {
@@ -72,5 +103,9 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       overrides,
     });
   }
-  return { name: o.name.trim(), coverImageUrl, slideBackground, settings: settings as QuestionSettings, questions };
+  return {
+    name: o.name.trim(), coverImageUrl, slideBackground,
+    introSlides: introSlides.length ? introSlides : undefined,
+    settings: settings as QuestionSettings, questions,
+  };
 }
