@@ -14,6 +14,7 @@ export const storage = {
   setGmToken: (code: string, token: string) => write(`gm:${code}`, token),
   getPlayer: (code: string) => read<StoredPlayer>(`player:${code}`),
   setPlayer: (code: string, v: StoredPlayer) => write(`player:${code}`, v),
+  clearPlayer: (code: string) => write(`player:${code}`, null),
   getPassphrase: () => read<string>("admin"),
   setPassphrase: (v: string | null) => write("admin", v),
 };

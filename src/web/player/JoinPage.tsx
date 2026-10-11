@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { LogIn } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import { storage } from "../lib/storage";
@@ -8,6 +8,7 @@ import { Button } from "../components/Button";
 export function JoinPage() {
   const { code = "" } = useParams();
   const navigate = useNavigate();
+  const kicked = (useLocation().state as { kicked?: boolean } | null)?.kicked === true;
   const roomCode = code.toUpperCase();
   const [nickname, setNickname] = useState("");
   const [exists, setExists] = useState<boolean | null>(null);
@@ -44,6 +45,7 @@ export function JoinPage() {
     <main className="flex min-h-full flex-col bg-slate-50 px-6 py-10">
       <h1 className="text-brand text-center text-4xl font-black">QuizJam</h1>
       <p className="mt-2 text-center text-slate-500">ルーム <span className="font-mono font-bold text-slate-800">{roomCode}</span></p>
+      {kicked && <p className="mt-4 rounded-xl bg-orange-100 px-4 py-3 text-center text-sm font-bold text-orange-800">GMによってルームから退出されました</p>}
       <form onSubmit={submit} className="mt-10 flex flex-col gap-4">
         <label className="text-sm font-bold text-slate-700" htmlFor="nickname">ニックネーム</label>
         <input

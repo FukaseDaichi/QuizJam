@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowRight, Crown, Home, Play, RotateCcw, Square, Users } from "lucide-react";
+import { ArrowRight, Crown, Home, Play, RotateCcw, Settings, Square, Users } from "lucide-react";
 import { useRoomSocket } from "../lib/useRoomSocket";
 import { api } from "../lib/api";
 import { storage } from "../lib/storage";
@@ -12,6 +12,7 @@ import { CountdownTimer } from "../components/CountdownTimer";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { CorrectPopup } from "./CorrectPopup";
 import { Confetti } from "./Confetti";
+import { GmControlPanel } from "./GmControlPanel";
 import { isLightColor } from "../lib/color";
 import type { QuestionSetSummary } from "../../shared/types";
 
@@ -24,6 +25,8 @@ export function GmRoomPage() {
   const [setId, setSetId] = useState("");
   const [carryOver, setCarryOver] = useState(false);
   const [confettiSeed, setConfettiSeed] = useState(0);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const closePanel = useCallback(() => setPanelOpen(false), []);
 
   useEffect(() => {
     api.listQuestionSets().then((s) => {
@@ -62,6 +65,7 @@ export function GmRoomPage() {
           <span className="font-mono text-2xl font-bold tracking-widest">{roomCode}</span>
           <span className="inline-flex items-center gap-1"><Users size={20} aria-hidden />{connectedCount}名</span>
           {state.questionSetName && <span>{state.questionSetName}</span>}
+          <Button variant="secondary" icon={Settings} onClick={() => setPanelOpen(true)} aria-haspopup="dialog" aria-expanded={panelOpen}>管理</Button>
         </div>
       </header>
 
@@ -145,6 +149,8 @@ export function GmRoomPage() {
         {(state.phase === "question" || state.phase === "questionResult") && <Button variant="secondary" size="lg" icon={Home} onClick={() => { if (confirm("ゲームを中断してロビーに戻りますか？")) send({ type: "endGame" }); }}>ロビーへ戻る</Button>}
         {state.phase === "lobby" && <Link to="/"><Button variant="secondary" size="lg">トップへ</Button></Link>}
       </footer>
+
+      <GmControlPanel open={panelOpen} onClose={closePanel} settings={state.settings} participants={state.participants} joinUrl={joinUrl} send={send} />
 
       <div className="pointer-events-none fixed left-1/2 top-24 z-40 flex -translate-x-1/2 flex-col gap-3">
         {state.popups.map((p) => <CorrectPopup key={p.id} {...p} onDone={onPopupDone} />)}
