@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, Crown, Send, Users, X } from "lucide-react";
+import { Check, Crown, Lightbulb, Send, Users, X } from "lucide-react";
 import { useRoomSocket } from "../lib/useRoomSocket";
 import { storage } from "../lib/storage";
 import { Button } from "../components/Button";
@@ -23,10 +23,12 @@ export function PlayPage() {
   }, [state.kicked, roomCode, navigate]);
   const [text, setText] = useState("");
   const [shake, setShake] = useState(false);
+  // ヒントは既定で隠し、参加者が「ヒントを見る」を押したときだけ表示する
+  const [showHint, setShowHint] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 問題が切り替わったら入力をクリアしてフォーカス
-  useEffect(() => { setText(""); inputRef.current?.focus(); }, [state.question?.index]);
+  // 問題が切り替わったら入力をクリアしてフォーカス。ヒントは隠し直す
+  useEffect(() => { setText(""); setShowHint(false); inputRef.current?.focus(); }, [state.question?.index]);
   // 不正解で揺らす
   useEffect(() => {
     if (state.lastAnswerResult && !state.lastAnswerResult.correct) {
@@ -80,7 +82,17 @@ export function PlayPage() {
                 className={`qj-pop mt-2 w-full rounded-xl bg-slate-100 object-contain ${q.prompt ? "max-h-56" : "max-h-[50vh]"}`} />
             )}
             {q.prompt && <p className="qj-pop mt-2 break-all text-4xl font-black leading-tight tracking-wider">{q.prompt}</p>}
-            {q.hint && <p className="mt-2 text-slate-500">ヒント: {q.hint}</p>}
+            {q.hint && (
+              <div className="mt-3">
+                <button
+                  type="button" onClick={() => setShowHint((v) => !v)} aria-expanded={showHint}
+                  className="inline-flex h-10 items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 active:scale-[0.98]"
+                >
+                  <Lightbulb size={16} aria-hidden />{showHint ? "ヒントを隠す" : "ヒントを見る"}
+                </button>
+                {showHint && <p className="qj-pop mt-2 text-slate-600">ヒント: {q.hint}</p>}
+              </div>
+            )}
             <div className="mt-4"><CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} /></div>
           </Card>
 
