@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import type { ClientMessage, ServerMessage } from "../../shared/messages";
+import { isKnownServerMessage, type ClientMessage, type ServerMessage } from "../../shared/messages";
 import { applyServerMessage, initialClientState, setConnected, type ClientState } from "./clientState";
 
 type Action =
@@ -21,6 +21,7 @@ export function useRoomSocket(roomCode: string | null, token: string | null) {
   const [state, dispatch] = useReducer(reducer, initialClientState);
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
+  const reloadingRef = useRef(false);
 
   useEffect(() => {
     if (!roomCode || !token) return;
@@ -39,7 +40,14 @@ export function useRoomSocket(roomCode: string | null, token: string | null) {
       ws.onopen = () => { if (!cancelled) { retryRef.current = 0; dispatch({ kind: "connected", value: true }); } };
       ws.onmessage = (ev) => {
         if (cancelled) return;
-        try { dispatch({ kind: "message", msg: JSON.parse(ev.data as string) as ServerMessage, now: Date.now() }); } catch { /* ignore */ }
+        let msg: unknown;
+        try { msg = JSON.parse(ev.data as string); } catch { return; }
+        if (!isKnownServerMessage(msg)) {
+          // デプロイ前から開いていた古いクライアント。新しいビルドを読み込み直す（state で復元される）
+          if (!reloadingRef.current) { reloadingRef.current = true; location.reload(); }
+          return;
+        }
+        dispatch({ kind: "message", msg, now: Date.now() });
       };
       ws.onclose = () => {
         if (cancelled) return;

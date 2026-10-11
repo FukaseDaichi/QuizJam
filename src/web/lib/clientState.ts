@@ -115,5 +115,8 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
       return { ...s, phase: "finalResult", finalEntries: msg.entries, leaderboard: msg.entries, question: null, questionResult: null };
     case "error":
       return { ...s, lastError: { code: msg.code, message: msg.message, at: nowMs } };
+    default:
+      // 新しいサーバーからの未知のメッセージ。状態を壊さず無視する（再読み込みは useRoomSocket が行う）
+      return s;
   }
 }

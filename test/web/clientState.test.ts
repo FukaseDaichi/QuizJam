@@ -206,3 +206,11 @@ describe("intro slides", () => {
     expect(s.intro).toEqual(intro);
   });
 });
+
+describe("unknown server messages", () => {
+  it("leaves the state untouched instead of wiping it", () => {
+    const s = withState();
+    const msg = { type: "somethingFromANewerServer", payload: 1 } as unknown as Parameters<typeof applyServerMessage>[1];
+    expect(applyServerMessage(s, msg, T0)).toBe(s);
+  });
+});
