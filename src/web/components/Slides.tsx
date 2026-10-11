@@ -1,6 +1,7 @@
 import { Timer } from "lucide-react";
 import type { Question, QuestionSettings } from "../../shared/types";
 import { isLightColor } from "../lib/color";
+import { introBodySizeClass } from "../lib/slideText";
 
 /**
  * GM 画面に映る見た目を模した 16:9 のスライドプレビュー。
@@ -57,7 +58,10 @@ export function QuestionSlidePreview({ question, index, total, settings, backgro
   );
 }
 
-/** 説明スライド。画像があれば中央に大きく、見出し・本文はその上下に添える。本文は改行を保つ */
+/**
+ * 説明スライド。画像があれば中央に大きく、見出し・本文はその上下に添える。本文は改行を保つ。
+ * 本文は長さに応じて文字を小さくし、画像があるときは本文の高さを抑えて画像が潰れないようにする。
+ */
 export function IntroSlidePreview({ heading, body, imageUrl, compact = false }: {
   heading?: string; body?: string; imageUrl?: string; compact?: boolean;
 }) {
@@ -66,11 +70,11 @@ export function IntroSlidePreview({ heading, body, imageUrl, compact = false }: 
     <SlideFrame>
       <div className="flex h-full flex-col items-center justify-center gap-[2cqw] px-[6cqw] py-[4cqw] text-center">
         {heading && (
-          <h2 className={`break-words font-black leading-tight ${imageUrl ? "text-[4cqw]" : "text-[6cqw]"}`}>{heading}</h2>
+          <h2 className={`shrink-0 break-words font-black leading-tight ${imageUrl ? "text-[4cqw]" : "text-[6cqw]"}`}>{heading}</h2>
         )}
-        {imageUrl && <img src={imageUrl} alt="" className="min-h-0 w-auto max-w-full flex-1 rounded-[1.5cqw] object-contain" />}
+        {imageUrl && <img src={imageUrl} alt="" className="min-h-[30%] w-auto max-w-full flex-1 rounded-[1.5cqw] object-contain" />}
         {body && !compact && (
-          <p className={`max-h-full overflow-hidden whitespace-pre-wrap break-words text-left leading-relaxed text-slate-200 ${imageUrl ? "text-[2.2cqw]" : "text-[3cqw]"}`}>{body}</p>
+          <p className={`overflow-hidden whitespace-pre-wrap break-words text-left leading-relaxed text-slate-200 ${imageUrl ? "max-h-[35%] shrink-0" : "max-h-full"} ${introBodySizeClass(body.length, !!imageUrl)}`}>{body}</p>
         )}
         {empty && <p className="text-[4cqw] text-slate-500">見出し・本文・画像のどれかを入力</p>}
       </div>
