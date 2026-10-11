@@ -76,6 +76,8 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
       return {
         ...s, phase: "intro", intro: msg.intro, question: null, questionResult: null, lastAnswerResult: null, finalEntries: null,
         correctCountThisQuestion: 0,
+        // タイトルスライドが企画名を運ぶ。再接続せずに開始を見た接続でも名前が分かる
+        questionSetName: msg.intro.slide.kind === "title" ? msg.intro.slide.name : s.questionSetName,
       };
     case "questionStarted":
       return {

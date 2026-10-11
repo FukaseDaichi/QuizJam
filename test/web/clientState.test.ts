@@ -188,6 +188,11 @@ describe("intro slides", () => {
     expect(s.correctCountThisQuestion).toBe(0);
   });
 
+  it("introStarted with the title slide tells the client the question set name", () => {
+    const s = applyServerMessage(withState(), { type: "introStarted", intro }, T0);
+    expect(s.questionSetName).toBe("テスト");
+  });
+
   it("questionStarted clears intro", () => {
     let s = applyServerMessage(withState(), { type: "introStarted", intro }, T0);
     s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
