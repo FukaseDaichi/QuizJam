@@ -20,6 +20,7 @@ export interface Question {
   answers: string[];
   hint?: string;
   imageUrl?: string;           // /api/images/<key>（R2 に保存した問題画像）
+  explanationImageUrl?: string; // 問題結果画面に映す解説画像。出題中は参加者に送らない
   overrides?: Partial<QuestionSettings>;
 }
 

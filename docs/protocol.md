@@ -68,7 +68,7 @@
 | `answerResult` | 回答者本人 | `{ correct, correctRank, remainingAttempts, points }` | 回答判定結果。正解時の `remainingAttempts` は `null` |
 | `someoneCorrect` | 全員 | `{ participantId, nickname, correctRank, points }` | GM 画面のポップアップ用 |
 | `leaderboard` | 全員 | `{ entries: LeaderboardEntry[] }` | 入室・回答・スコア調整・キック・締切のたびに送る |
-| `questionClosed` | 全員 | `{ result: QuestionResultView }` | 問題終了。正解候補と正解者一覧（正解順） |
+| `questionClosed` | 全員 | `{ result: QuestionResultView }` | 問題終了。正解候補・解説画像（あれば）・正解者一覧（正解順） |
 | `finalResult` | 全員 | `{ entries }` | 最終順位表 |
 | `error` | 本人 | `{ code, message }` | 拒否理由。`message` は日本語の表示用文言 |
 
@@ -96,6 +96,12 @@ interface QuestionView {
   background?: string;             // 問題セットの slideBackground
   deadlineAt: number | null;
   maxAttempts: number | null;
+}
+
+interface QuestionResultView {
+  answers: string[];
+  explanationImageUrl?: string;    // 問題の解説画像。出題中の QuestionView には含めない
+  results: { participantId: string; nickname: string; correctRank: number; points: number }[];
 }
 
 interface IntroView {

@@ -265,7 +265,7 @@ export class GameEngine {
         correctRank: a.correctRank!,
         points: a.points ?? settings.basePoints + (settings.rankBonus[a.correctRank! - 1] ?? 0),
       }));
-    return { answers: [...q.answers], results };
+    return { answers: [...q.answers], explanationImageUrl: q.explanationImageUrl, results };
   }
 
   next(now: number): NextOutcome {

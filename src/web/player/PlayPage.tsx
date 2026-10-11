@@ -126,6 +126,9 @@ export function PlayPage() {
 
       {state.ready && state.phase === "questionResult" && state.questionResult && (
         <Card className="text-center">
+          {state.questionResult.explanationImageUrl && (
+            <img src={state.questionResult.explanationImageUrl} alt="解説" className="qj-pop mb-3 max-h-64 w-full rounded-xl bg-slate-100 object-contain" />
+          )}
           <p className="text-sm font-bold text-slate-500">正解</p>
           <p className="qj-pop mt-1 text-4xl font-black">{state.questionResult.answers[0]}</p>
           {state.questionResult.answers.length > 1 && <p className="text-slate-500">（{state.questionResult.answers.slice(1).join("、")}）</p>}
