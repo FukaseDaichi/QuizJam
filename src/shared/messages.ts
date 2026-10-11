@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, LiveSettings, Participant, Phase } from "./types";
+import type { LeaderboardEntry, LiveSettings, Participant, Phase, TimerMode } from "./types";
 
 // ---- client -> server ----
 export type ClientMessage =
@@ -17,15 +17,21 @@ const CLIENT_TYPES = new Set(["answer", "start", "close", "next", "endGame", "up
 const isPositiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
 const isNonNegativeInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
+const TIMER_MODES = new Set<TimerMode>(["fixed", "afterFirstCorrect", "none"]);
+
 /** updateSettings の settings を検証し、許可されたキーだけを残して返す。不正なら null */
 function parseLiveSettings(v: unknown): Partial<LiveSettings> | null {
   if (typeof v !== "object" || v === null) return null;
   const o = v as Record<string, unknown>;
   const out: Partial<LiveSettings> = {};
   for (const key of Object.keys(o)) {
-    if (key === "timerSeconds") { if (!isPositiveInt(o[key])) return null; out.timerSeconds = o[key] as number; }
-    else if (key === "maxAttempts") { if (o[key] !== null && !isPositiveInt(o[key])) return null; out.maxAttempts = o[key] as number | null; }
-    else if (key === "wrongPenalty") { if (!isNonNegativeInt(o[key])) return null; out.wrongPenalty = o[key] as number; }
+    const val = o[key];
+    if (key === "timerMode") { if (!TIMER_MODES.has(val as TimerMode)) return null; out.timerMode = val as TimerMode; }
+    else if (key === "timerSeconds") { if (!isPositiveInt(val)) return null; out.timerSeconds = val; }
+    else if (key === "maxAttempts") { if (val !== null && !isPositiveInt(val)) return null; out.maxAttempts = val as number | null; }
+    else if (key === "basePoints") { if (!isNonNegativeInt(val)) return null; out.basePoints = val; }
+    else if (key === "wrongPenalty") { if (!isNonNegativeInt(val)) return null; out.wrongPenalty = val; }
+    else if (key === "rankBonus") { if (!Array.isArray(val) || val.length > 20 || !val.every(isNonNegativeInt)) return null; out.rankBonus = val; }
     else return null;
   }
   return out;
@@ -123,7 +129,7 @@ export type ServerMessage =
   | { type: "kicked" }
   | { type: "settingsUpdated"; settings: SettingsView }
   | { type: "questionStarted"; question: QuestionView }
-  | { type: "deadlineSet"; deadlineAt: number }
+  | { type: "deadlineSet"; deadlineAt: number | null }
   | { type: "answerResult"; correct: boolean; correctRank: number | null; remainingAttempts: number | null; points: number }
   | { type: "someoneCorrect"; participantId: string; nickname: string; correctRank: number; points: number }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }

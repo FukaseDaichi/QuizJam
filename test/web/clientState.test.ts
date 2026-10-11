@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { DEFAULT_SETTINGS } from "../../src/shared/defaults";
 import { applyServerMessage, initialClientState, setConnected, type ClientState } from "../../src/web/lib/clientState";
 import type { StateMessage } from "../../src/shared/messages";
 import { remainingSeconds } from "../../src/web/lib/time";
@@ -97,7 +98,7 @@ describe("applyServerMessage", () => {
   it("settings come from state and are replaced by settingsUpdated", () => {
     let s = withState();
     expect(s.settings).toEqual({ override: {}, effective: null });
-    const settings = { override: { timerSeconds: 5 }, effective: { timerSeconds: 5, maxAttempts: 3, wrongPenalty: 0 } };
+    const settings = { override: { timerSeconds: 5 }, effective: { ...DEFAULT_SETTINGS, timerSeconds: 5 } };
     s = applyServerMessage(s, { type: "settingsUpdated", settings }, T0);
     expect(s.settings).toEqual(settings);
   });
@@ -144,5 +145,29 @@ describe("remainingSeconds", () => {
     expect(remainingSeconds(T0 + 9_001, 0, T0)).toBe(10);
     expect(remainingSeconds(T0 + 10_000, 500, T0)).toBe(10); // サーバーは T0+500 なので残り 9.5s → 10
     expect(remainingSeconds(T0 - 1, 0, T0)).toBe(0);
+  });
+});
+
+describe("live settings during a question", () => {
+  const question = { index: 0, total: 2, prompt: "ごんり", deadlineAt: null, maxAttempts: 3 };
+  const effective = { timerMode: "fixed" as const, timerSeconds: 10, basePoints: 100, rankBonus: [50], wrongPenalty: 0, maxAttempts: null };
+
+  it("settingsUpdated applies the new maxAttempts to the running question", () => {
+    let s = applyServerMessage(withState(), { type: "questionStarted", question }, T0);
+    s = applyServerMessage(s, { type: "settingsUpdated", settings: { override: { maxAttempts: null }, effective } }, T0);
+    expect(s.settings.effective).toEqual(effective);
+    expect(s.question?.maxAttempts).toBeNull();
+  });
+
+  it("settingsUpdated without a running question only stores the settings", () => {
+    const s = applyServerMessage(withState(), { type: "settingsUpdated", settings: { override: {}, effective: null } }, T0);
+    expect(s.question).toBeNull();
+    expect(s.settings).toEqual({ override: {}, effective: null });
+  });
+
+  it("deadlineSet with null clears the countdown", () => {
+    let s = applyServerMessage(withState(), { type: "questionStarted", question: { ...question, deadlineAt: T0 + 5_000 } }, T0);
+    s = applyServerMessage(s, { type: "deadlineSet", deadlineAt: null }, T0);
+    expect(s.question?.deadlineAt).toBeNull();
   });
 });

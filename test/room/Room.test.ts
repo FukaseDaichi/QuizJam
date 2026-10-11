@@ -262,7 +262,10 @@ describe("Room DO GM live controls", () => {
       { type: "updateSettings", settings: { timerSeconds: 1.5 } },
       { type: "updateSettings", settings: { maxAttempts: 0 } },
       { type: "updateSettings", settings: { wrongPenalty: -1 } },
-      { type: "updateSettings", settings: { basePoints: 1 } },
+      { type: "updateSettings", settings: { basePoints: -1 } },
+      { type: "updateSettings", settings: { timerMode: "soon" } },
+      { type: "updateSettings", settings: { rankBonus: ["a"] } },
+      { type: "updateSettings", settings: { unknown: 1 } },
       { type: "updateSettings" },
       { type: "adjustScore", participantId: "x", delta: "10" },
       { type: "adjustScore", participantId: "x", delta: 1.5 },
@@ -286,11 +289,18 @@ describe("Room DO GM live controls", () => {
     gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
     const q0 = await gm.waitFor("questionStarted");
     const startedAt = q0.question.deadlineAt! - 30_000;
+    // 開始時に実際に効く設定が配られる
+    const atStart = await gm.waitFor("settingsUpdated");
+    expect(atStart.settings).toEqual({ override: {}, effective: { ...DEFAULT_SETTINGS, timerMode: "fixed", timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 } });
+    await c1.waitFor("settingsUpdated");
 
     gm.send({ type: "updateSettings", settings: { timerSeconds: 5, maxAttempts: null } });
     const upd = await gm.waitFor("settingsUpdated");
     expect(upd.settings.override).toEqual({ timerSeconds: 5, maxAttempts: null });
-    expect(upd.settings.effective).toMatchObject({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 0 });
+    expect(upd.settings.effective).toEqual({ timerMode: "fixed", timerSeconds: 5, maxAttempts: null, wrongPenalty: 0, basePoints: 100, rankBonus: [50, 30, 10] });
+    // 参加者にも届き、残り回答回数の表示に使う maxAttempts が今の問題に反映される
+    const updP = await c1.waitFor("settingsUpdated");
+    expect(updP.settings.effective?.maxAttempts).toBeNull();
 
     gm.send({ type: "close" });
     await gm.waitFor("questionClosed");
@@ -303,6 +313,68 @@ describe("Room DO GM live controls", () => {
     const st = await gm2.waitFor("state");
     expect(st.settings.override).toEqual({ timerSeconds: 5, maxAttempts: null });
     expect(st.settings.effective).toMatchObject({ timerSeconds: 5, maxAttempts: null });
+  });
+
+  it("switching timerMode to fixed mid-question starts a countdown now and the alarm closes the question", async () => {
+    const set = await seedSet({ timerMode: "none", timerSeconds: 60 });
+    await initRoom("LIVE25");
+    const gm = await connect("LIVE25", "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join("LIVE25", "みさき");
+    const c1 = await connect("LIVE25", p1.participantToken);
+    await c1.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    expect((await gm.waitFor("questionStarted")).question.deadlineAt).toBeNull();
+
+    const before = Date.now();
+    gm.send({ type: "updateSettings", settings: { timerMode: "fixed", timerSeconds: 1 } });
+    const dl = await gm.waitFor("deadlineSet");
+    expect(dl.deadlineAt).toBeGreaterThanOrEqual(before + 1_000);
+    expect((await c1.waitFor("deadlineSet")).deadlineAt).toBe(dl.deadlineAt);
+    await gm.waitFor("settingsUpdated");
+
+    expect(await runDurableObjectAlarm(stubFor("LIVE25"))).toBe(true);
+    await gm.waitFor("questionClosed");
+    expect((await (await connect("LIVE25", "gm-token")).waitFor("state")).phase).toBe("questionResult");
+  });
+
+  it("switching timerMode to none mid-question clears the deadline and the alarm no longer closes it", async () => {
+    const set = await seedSet({ timerMode: "fixed", timerSeconds: 1 });
+    await initRoom("LIVE26");
+    const gm = await connect("LIVE26", "gm-token");
+    await gm.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    expect((await gm.waitFor("questionStarted")).question.deadlineAt).not.toBeNull();
+
+    const p1 = await join("LIVE26", "みさき");
+    const c1 = await connect("LIVE26", p1.participantToken);
+    await c1.waitFor("state");
+
+    gm.send({ type: "updateSettings", settings: { timerMode: "none" } });
+    expect((await gm.waitFor("deadlineSet")).deadlineAt).toBeNull();
+    await gm.waitFor("settingsUpdated");
+    const st = await (await connect("LIVE26", "gm-token")).waitFor("state");
+    expect(st.phase).toBe("question");
+    expect(st.question?.deadlineAt).toBeNull();
+
+    // 元の締切（1秒）を過ぎても回答を受け付ける
+    await new Promise((r) => setTimeout(r, 1_200));
+    c1.send({ type: "answer", text: "りんご" });
+    expect((await c1.waitFor("answerResult")).correct).toBe(true);
+  });
+
+  it("changing only the seconds mid-question keeps the running deadline and sends no deadlineSet", async () => {
+    const set = await seedSet({ timerMode: "fixed", timerSeconds: 30 });
+    await initRoom("LIVE27");
+    const gm = await connect("LIVE27", "gm-token");
+    await gm.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    const q = await gm.waitFor("questionStarted");
+    gm.send({ type: "updateSettings", settings: { timerSeconds: 5 } });
+    await gm.waitFor("settingsUpdated");
+    expect(gm.received.some((m) => m.type === "deadlineSet")).toBe(false);
+    const st = await (await connect("LIVE27", "gm-token")).waitFor("state");
+    expect(st.question?.deadlineAt).toBe(q.question.deadlineAt);
   });
 
   it("adjustScore changes the score and broadcasts the leaderboard", async () => {
@@ -352,13 +424,13 @@ describe("Room DO GM live controls", () => {
 
   it("kicking the last undecided participant closes the question", async () => {
     const set = await seedSet({ timerMode: "none" });
-    await initRoom("LIVE05");
-    const gm = await connect("LIVE05", "gm-token");
+    await initRoom("LIVE15");
+    const gm = await connect("LIVE15", "gm-token");
     await gm.waitFor("state");
-    const p1 = await join("LIVE05", "みさき");
-    const p2 = await join("LIVE05", "たろう");
-    const c1 = await connect("LIVE05", p1.participantToken);
-    const c2 = await connect("LIVE05", p2.participantToken);
+    const p1 = await join("LIVE15", "みさき");
+    const p2 = await join("LIVE15", "たろう");
+    const c1 = await connect("LIVE15", p1.participantToken);
+    const c2 = await connect("LIVE15", p2.participantToken);
     await c1.waitFor("state"); await c2.waitFor("state");
     gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
     await c1.waitFor("questionStarted"); await c2.waitFor("questionStarted");

@@ -331,12 +331,6 @@ describe("GameEngine GM live controls", () => {
       expect(e.getParticipant("p1")?.score).toBe(-25);
     });
 
-    it("partial updates merge into the existing override", () => {
-      e.setSettingsOverride({ timerSeconds: 5 });
-      e.setSettingsOverride({ maxAttempts: 2 });
-      expect(e.settingsOverride()).toEqual({ timerSeconds: 5, maxAttempts: 2 });
-    });
-
     it("override survives a snapshot round trip and endGame", () => {
       e.setSettingsOverride({ timerSeconds: 5 });
       const e2 = GameEngine.fromSnapshot(e.snapshot());
@@ -381,5 +375,76 @@ describe("GameEngine GM live controls", () => {
       e.removeParticipant("p1");
       expect(e.submitAnswer("p1", "りんご", T0 + 1)).toEqual({ kind: "rejected", code: "forbidden" });
     });
+  });
+});
+
+describe("GameEngine live settings applied to the running question", () => {
+  let e: GameEngine;
+  beforeEach(() => {
+    e = GameEngine.create("ABC123");
+    e.addParticipant("p1", "みさき");
+    e.addParticipant("p2", "たろう");
+  });
+
+  it("setSettingsOverride replaces the whole override (keys not sent are cleared)", () => {
+    e.setSettingsOverride({ timerSeconds: 5, wrongPenalty: 20 });
+    e.setSettingsOverride({ maxAttempts: null });
+    expect(e.settingsOverride()).toEqual({ maxAttempts: null });
+  });
+
+  it("switching to fixed during a question without a deadline starts a countdown now", () => {
+    e.start(makeSet({ timerMode: "none", timerSeconds: 60 }), false, T0);
+    expect(e.deadlineAt).toBeNull();
+    e.setSettingsOverride({ timerMode: "fixed", timerSeconds: 10 });
+    expect(e.reconcileDeadline(T0 + 5_000)).toEqual({ changed: true, deadlineAt: T0 + 15_000 });
+    expect(e.deadlineAt).toBe(T0 + 15_000);
+  });
+
+  it("switching to none during a question clears the deadline", () => {
+    e.start(makeSet({ timerMode: "fixed", timerSeconds: 30 }), false, T0);
+    e.setSettingsOverride({ timerMode: "none" });
+    expect(e.reconcileDeadline(T0 + 1_000)).toEqual({ changed: true, deadlineAt: null });
+    expect(e.deadlineAt).toBeNull();
+    expect(e.submitAnswer("p1", "りんご", T0 + 60_000).kind).toBe("correct");
+  });
+
+  it("switching to afterFirstCorrect starts the countdown only if someone is already correct", () => {
+    e.start(makeSet({ timerMode: "none", timerSeconds: 10 }), false, T0);
+    e.setSettingsOverride({ timerMode: "afterFirstCorrect" });
+    expect(e.reconcileDeadline(T0 + 1_000)).toEqual({ changed: false, deadlineAt: null });
+    // 切り替え後の最初の正解は、通常の afterFirstCorrect と同じく回答時にタイマーを開始する
+    expect(e.submitAnswer("p1", "りんご", T0 + 2_000)).toMatchObject({ kind: "correct", deadlineAt: T0 + 12_000, deadlineJustSet: true });
+    expect(e.reconcileDeadline(T0 + 3_000)).toEqual({ changed: false, deadlineAt: T0 + 12_000 });
+    // 正解者が出てから切り替えた場合も同じく「今」から数える
+    const e2 = GameEngine.create("X");
+    e2.addParticipant("p1", "a");
+    e2.start(makeSet({ timerMode: "none", timerSeconds: 10 }), false, T0);
+    e2.submitAnswer("p1", "りんご", T0 + 1_000);
+    e2.setSettingsOverride({ timerMode: "afterFirstCorrect" });
+    expect(e2.reconcileDeadline(T0 + 4_000)).toEqual({ changed: true, deadlineAt: T0 + 14_000 });
+  });
+
+  it("changing seconds alone leaves a running deadline untouched", () => {
+    e.start(makeSet({ timerMode: "fixed", timerSeconds: 30 }), false, T0);
+    e.setSettingsOverride({ timerSeconds: 5 });
+    expect(e.reconcileDeadline(T0 + 1_000)).toEqual({ changed: false, deadlineAt: T0 + 30_000 });
+  });
+
+  it("does nothing outside the question phase", () => {
+    e.setSettingsOverride({ timerMode: "fixed", timerSeconds: 5 });
+    expect(e.reconcileDeadline(T0)).toEqual({ changed: false, deadlineAt: null });
+    e.start(makeSet({ timerMode: "none" }), false, T0);
+    e.closeQuestion(T0 + 1);
+    expect(e.reconcileDeadline(T0 + 2)).toEqual({ changed: false, deadlineAt: T0 + 1 });
+  });
+
+  it("basePoints and rankBonus override affect new answers, and the result keeps the points actually awarded", () => {
+    e.start(makeSet({ basePoints: 100, rankBonus: [50] }), false, T0);
+    expect(e.submitAnswer("p1", "りんご", T0 + 1)).toMatchObject({ kind: "correct", points: 150 });
+    e.setSettingsOverride({ basePoints: 10, rankBonus: [] });
+    expect(e.submitAnswer("p2", "林檎", T0 + 2)).toMatchObject({ kind: "correct", points: 10 });
+    const r = e.closeQuestion(T0 + 3);
+    expect(r.results.map((x) => [x.participantId, x.points])).toEqual([["p1", 150], ["p2", 10]]);
+    expect(e.leaderboard().map((x) => [x.participantId, x.score])).toEqual([["p1", 150], ["p2", 10]]);
   });
 });

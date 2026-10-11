@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TIMER_MODE_LABELS } from "../lib/labels";
 import { ChevronDown, ChevronRight, Plus, Shuffle, X } from "lucide-react";
 import type { Question, QuestionSettings, TimerMode } from "../../shared/types";
 import { shuffleAnagram } from "../../shared/anagram";
@@ -8,11 +9,7 @@ import { ImageField } from "./ImageField";
 
 const num = (v: string) => (v === "" ? 0 : Number(v));
 
-const TIMER_LABELS: Record<TimerMode, string> = {
-  fixed: "固定カウントダウン",
-  afterFirstCorrect: "正解者が出てからカウントダウン",
-  none: "なし（GMが締切）",
-};
+const TIMER_LABELS = TIMER_MODE_LABELS;
 
 /** タイトルスライド＝企画名・表紙・セット全体の設定 */
 export function TitleInspector({ name, coverImageUrl, slideBackground, settings, passphrase, onName, onCover, onSlideBackground, onSettings }: {

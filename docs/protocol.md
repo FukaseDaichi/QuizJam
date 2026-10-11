@@ -46,7 +46,7 @@
 | `close` | GM | なし | 現在の問題を手動締切 |
 | `next` | GM | なし | 次の問題へ。最終問題なら最終結果へ |
 | `endGame` | GM | なし | ルームをロビーに戻す |
-| `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き。`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`wrongPenalty` は 0 以上の整数 |
+| `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き全体。送った内容で置き換え、`{}` で解除。`timerMode` は3モードのいずれか、`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`basePoints` / `wrongPenalty` は 0 以上の整数、`rankBonus` は 0 以上の整数の配列（20個まで）。出題中なら締切を合わせ直し、変われば `deadlineSet` を送る |
 | `adjustScore` | GM | `{ participantId, delta }` | 参加者の点数を加減 |
 | `kick` | GM | `{ participantId }` | 参加者を退出させる |
 
@@ -61,9 +61,9 @@
 | `participantLeft` | 全員 | `{ participant }` | 切断（`connected: false`） |
 | `participantRemoved` | 全員 | `{ participant }` | キックで削除 |
 | `kicked` | キックされた本人 | なし | 直後にサーバーがソケットを閉じる（code 4000） |
-| `settingsUpdated` | 全員 | `{ settings: SettingsView }` | ライブ設定の変更 |
+| `settingsUpdated` | 全員 | `{ settings: SettingsView }` | ライブ設定の変更。出題のたび（`start` / `next`）にも送り、実際に効く設定を知らせる |
 | `questionStarted` | 全員 | `{ question: QuestionView }` | 出題 |
-| `deadlineSet` | 全員 | `{ deadlineAt }` | 正解者トリガーで締切時刻が決まったとき |
+| `deadlineSet` | 全員 | `{ deadlineAt }` | 締切時刻が決まった・消えたとき（正解者トリガー、ライブ設定のタイマー変更）。`null` は締切なし |
 | `answerResult` | 回答者本人 | `{ correct, correctRank, remainingAttempts, points }` | 回答判定結果。正解時の `remainingAttempts` は `null` |
 | `someoneCorrect` | 全員 | `{ participantId, nickname, correctRank, points }` | GM 画面のポップアップ用 |
 | `leaderboard` | 全員 | `{ entries: LeaderboardEntry[] }` | 入室・回答・スコア調整・キック・締切のたびに送る |

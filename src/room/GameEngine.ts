@@ -101,9 +101,28 @@ export class GameEngine {
     return { ...this.s.settingsOverride };
   }
 
-  setSettingsOverride(patch: Partial<LiveSettings>): Partial<LiveSettings> {
-    this.s.settingsOverride = { ...this.s.settingsOverride, ...patch };
+  /** ライブ設定を丸ごと置き換える。送られなかったキーは上書きが解除される */
+  setSettingsOverride(override: Partial<LiveSettings>): Partial<LiveSettings> {
+    this.s.settingsOverride = { ...override };
     return this.settingsOverride();
+  }
+
+  /**
+   * 出題中にライブ設定が変わったとき、現在の問題の締切を新しいタイマーモードに合わせ直す。
+   * - none: 締切を消す
+   * - fixed: 締切が無ければ「今＋秒数」で開始。すでに動いている締切は動かさない
+   * - afterFirstCorrect: 締切が無く、すでに正解者がいれば「今＋秒数」で開始。正解者がいなければ最初の正解を待つ
+   */
+  reconcileDeadline(now: number): { changed: boolean; deadlineAt: number | null } {
+    const before = this.s.deadlineAt;
+    if (this.s.phase !== "question" || !this.s.questionSet) return { changed: false, deadlineAt: before };
+    const settings = this.settings();
+    let after: number | null;
+    if (settings.timerMode === "none") after = null;
+    else if (settings.timerMode === "fixed") after = before ?? now + settings.timerSeconds * 1000;
+    else after = before ?? (this.correctCount() > 0 ? now + settings.timerSeconds * 1000 : null);
+    this.s.deadlineAt = after;
+    return { changed: after !== before, deadlineAt: after };
   }
 
   // ---- game flow ----
@@ -180,7 +199,7 @@ export class GameEngine {
       const correctRank = current.filter((a) => a.correct).length + 1;
       const points = settings.basePoints + (settings.rankBonus[correctRank - 1] ?? 0);
       p.score += points;
-      this.s.answers.push({ questionIndex: idx, participantId, text, correct: true, submittedAt: now, correctRank });
+      this.s.answers.push({ questionIndex: idx, participantId, text, correct: true, submittedAt: now, correctRank, points });
       let deadlineJustSet = false;
       if (settings.timerMode === "afterFirstCorrect" && this.s.deadlineAt === null) {
         this.s.deadlineAt = now + settings.timerSeconds * 1000;
@@ -191,7 +210,7 @@ export class GameEngine {
 
     const points = settings.wrongPenalty === 0 ? 0 : -settings.wrongPenalty;
     p.score += points;
-    this.s.answers.push({ questionIndex: idx, participantId, text, correct: false, submittedAt: now, correctRank: null });
+    this.s.answers.push({ questionIndex: idx, participantId, text, correct: false, submittedAt: now, correctRank: null, points });
     const remainingAttempts = settings.maxAttempts === null ? null : settings.maxAttempts - (mine.length + 1);
     return { kind: "wrong", remainingAttempts, points };
   }
@@ -215,7 +234,7 @@ export class GameEngine {
         participantId: a.participantId,
         nickname: this.s.participants[a.participantId]?.nickname ?? "?",
         correctRank: a.correctRank!,
-        points: settings.basePoints + (settings.rankBonus[a.correctRank! - 1] ?? 0),
+        points: a.points ?? settings.basePoints + (settings.rankBonus[a.correctRank! - 1] ?? 0),
       }));
     return { answers: [...q.answers], results };
   }

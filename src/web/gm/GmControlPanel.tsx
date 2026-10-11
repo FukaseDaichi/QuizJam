@@ -3,11 +3,12 @@ import { QRCodeSVG } from "qrcode.react";
 import { Minus, Plus, Settings, UserMinus, UserPlus, Users, X } from "lucide-react";
 import { Button } from "../components/Button";
 import type { ClientMessage, SettingsView } from "../../shared/messages";
-import type { LiveSettings, Participant } from "../../shared/types";
+import type { LiveSettings, Participant, TimerMode } from "../../shared/types";
+import { TIMER_MODE_LABELS } from "../lib/labels";
 
 /**
  * GM がゲーム中でも開ける管理パネル。
- * 設定の上書き（次の問題から反映）、参加者のスコア調整・キック、途中参加用の QR を扱う。
+ * 設定の上書き（今の問題にも即時反映）、参加者のスコア調整・キック、途中参加用の QR を扱う。
  */
 export function GmControlPanel({ open, onClose, settings, participants, joinUrl, send }: {
   open: boolean;
@@ -51,45 +52,88 @@ export function GmControlPanel({ open, onClose, settings, participants, joinUrl,
 const inputClass = "mt-1 h-12 w-full rounded-xl bg-slate-700 px-3 text-lg tabular-nums disabled:opacity-40";
 
 function SettingsForm({ settings, send }: { settings: SettingsView; send: (msg: ClientMessage) => void }) {
-  const current = { ...settings.effective, ...settings.override };
-  const [timerSeconds, setTimerSeconds] = useState(String(current.timerSeconds ?? ""));
-  const [unlimited, setUnlimited] = useState(current.maxAttempts === null);
-  const [maxAttempts, setMaxAttempts] = useState(current.maxAttempts == null ? "" : String(current.maxAttempts));
-  const [wrongPenalty, setWrongPenalty] = useState(String(current.wrongPenalty ?? ""));
+  const { override: o, effective: eff } = settings;
+  // 入力欄はライブ設定（上書き）を表し、空欄はセットの設定を使う。placeholder に実際に効く値を出す
+  const [timerMode, setTimerMode] = useState<TimerMode | "">(o.timerMode ?? "");
+  const [timerSeconds, setTimerSeconds] = useState(o.timerSeconds == null ? "" : String(o.timerSeconds));
+  const [unlimited, setUnlimited] = useState(o.maxAttempts === null);
+  const [maxAttempts, setMaxAttempts] = useState(o.maxAttempts == null ? "" : String(o.maxAttempts));
+  const [basePoints, setBasePoints] = useState(o.basePoints == null ? "" : String(o.basePoints));
+  const [wrongPenalty, setWrongPenalty] = useState(o.wrongPenalty == null ? "" : String(o.wrongPenalty));
+  const [rankBonus, setRankBonus] = useState(o.rankBonus == null ? "" : o.rankBonus.join(","));
   const [applied, setApplied] = useState(false);
+
+  const effectiveMode = timerMode || eff?.timerMode;
+  const ph = (v: number | null | undefined) => (eff ? (v === null ? "無制限" : String(v)) : "セットの設定");
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const patch: Partial<LiveSettings> = {};
+    const next: Partial<LiveSettings> = {};
+    if (timerMode) next.timerMode = timerMode;
     const sec = Number(timerSeconds);
-    if (timerSeconds !== "" && Number.isInteger(sec) && sec > 0) patch.timerSeconds = sec;
-    if (unlimited) patch.maxAttempts = null;
+    if (timerSeconds !== "" && Number.isInteger(sec) && sec > 0) next.timerSeconds = sec;
+    if (unlimited) next.maxAttempts = null;
     else {
       const n = Number(maxAttempts);
-      if (maxAttempts !== "" && Number.isInteger(n) && n > 0) patch.maxAttempts = n;
+      if (maxAttempts !== "" && Number.isInteger(n) && n > 0) next.maxAttempts = n;
     }
+    const base = Number(basePoints);
+    if (basePoints !== "" && Number.isInteger(base) && base >= 0) next.basePoints = base;
     const pen = Number(wrongPenalty);
-    if (wrongPenalty !== "" && Number.isInteger(pen) && pen >= 0) patch.wrongPenalty = pen;
-    if (Object.keys(patch).length === 0) return;
-    send({ type: "updateSettings", settings: patch });
+    if (wrongPenalty !== "" && Number.isInteger(pen) && pen >= 0) next.wrongPenalty = pen;
+    if (rankBonus.trim() !== "") {
+      const bonus = rankBonus.split(",").map((x) => x.trim()).filter(Boolean).map(Number);
+      if (bonus.every((n) => Number.isInteger(n) && n >= 0)) next.rankBonus = bonus;
+    }
+    send({ type: "updateSettings", settings: next });
     setApplied(true);
     setTimeout(() => setApplied(false), 2000);
+  };
+
+  const clearAll = () => {
+    setTimerMode(""); setTimerSeconds(""); setUnlimited(false); setMaxAttempts(""); setBasePoints(""); setWrongPenalty(""); setRankBonus("");
+    send({ type: "updateSettings", settings: {} });
   };
 
   return (
     <form onSubmit={submit}>
       <h3 className="mb-3 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-70"><Settings size={16} aria-hidden />設定</h3>
-      <label className="block text-sm text-slate-400" htmlFor="live-timer">制限時間（秒）</label>
-      <input id="live-timer" type="number" min={1} step={1} inputMode="numeric" value={timerSeconds} onChange={(e) => setTimerSeconds(e.target.value)} className={inputClass} placeholder="セットの設定" />
-      <label className="mt-4 block text-sm text-slate-400" htmlFor="live-attempts">お手付き上限（回）</label>
-      <input id="live-attempts" type="number" min={1} step={1} inputMode="numeric" value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} disabled={unlimited} className={inputClass} placeholder="セットの設定" />
-      <label className="mt-2 flex items-center gap-2 text-slate-300">
-        <input type="checkbox" checked={unlimited} onChange={(e) => setUnlimited(e.target.checked)} className="h-5 w-5" />無制限
-      </label>
-      <label className="mt-4 block text-sm text-slate-400" htmlFor="live-penalty">不正解ペナルティ（点）</label>
-      <input id="live-penalty" type="number" min={0} step={1} inputMode="numeric" value={wrongPenalty} onChange={(e) => setWrongPenalty(e.target.value)} className={inputClass} placeholder="セットの設定" />
+      <label className="block text-sm text-slate-400" htmlFor="live-timer-mode">制限時間</label>
+      <select id="live-timer-mode" value={timerMode} onChange={(e) => setTimerMode(e.target.value as TimerMode | "")} className={inputClass}>
+        <option value="">セットの設定{eff ? `（${TIMER_MODE_LABELS[eff.timerMode]}）` : ""}</option>
+        {(Object.keys(TIMER_MODE_LABELS) as TimerMode[]).map((m) => <option key={m} value={m}>{TIMER_MODE_LABELS[m]}</option>)}
+      </select>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm text-slate-400" htmlFor="live-timer">秒数</label>
+          <input id="live-timer" type="number" min={1} step={1} inputMode="numeric" value={timerSeconds} onChange={(e) => setTimerSeconds(e.target.value)}
+            disabled={effectiveMode === "none"} className={inputClass} placeholder={ph(eff?.timerSeconds)} />
+        </div>
+        <div>
+          <label className="block text-sm text-slate-400" htmlFor="live-attempts">お手付き上限（回）</label>
+          <input id="live-attempts" type="number" min={1} step={1} inputMode="numeric" value={maxAttempts} onChange={(e) => setMaxAttempts(e.target.value)} disabled={unlimited} className={inputClass} placeholder={ph(eff?.maxAttempts)} />
+          <label className="mt-1 flex items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" checked={unlimited} onChange={(e) => setUnlimited(e.target.checked)} className="h-5 w-5" />無制限
+          </label>
+        </div>
+        <div>
+          <label className="block text-sm text-slate-400" htmlFor="live-base">基本点</label>
+          <input id="live-base" type="number" min={0} step={1} inputMode="numeric" value={basePoints} onChange={(e) => setBasePoints(e.target.value)} className={inputClass} placeholder={ph(eff?.basePoints)} />
+        </div>
+        <div>
+          <label className="block text-sm text-slate-400" htmlFor="live-penalty">不正解ペナルティ（点）</label>
+          <input id="live-penalty" type="number" min={0} step={1} inputMode="numeric" value={wrongPenalty} onChange={(e) => setWrongPenalty(e.target.value)} className={inputClass} placeholder={ph(eff?.wrongPenalty)} />
+        </div>
+      </div>
+      <label className="mt-3 block text-sm text-slate-400" htmlFor="live-bonus">正解順ボーナス <span className="text-xs">1位から順にカンマ区切り</span></label>
+      <input id="live-bonus" inputMode="numeric" value={rankBonus} onChange={(e) => setRankBonus(e.target.value)} className={inputClass} placeholder={eff ? eff.rankBonus.join(",") || "なし" : "セットの設定"} />
       <Button type="submit" variant="primary" className="mt-5 w-full">適用する</Button>
-      <p className="mt-2 text-sm text-slate-400" aria-live="polite">{applied ? "適用しました。次の問題から反映されます" : "次の問題から反映されます"}</p>
+      <p className="mt-2 text-sm text-slate-400" aria-live="polite">
+        {applied ? "適用しました。" : ""}空欄はセットの設定を使います。今の問題にもすぐ反映され、制限時間は締切が無ければ今から数えます
+      </p>
+      {Object.keys(o).length > 0 && (
+        <button type="button" onClick={clearAll} className="mt-2 text-xs font-bold text-slate-400 underline hover:text-slate-200">上書きをすべて解除</button>
+      )}
     </form>
   );
 }

@@ -54,9 +54,15 @@
 1. 既定値（`timerMode: fixed`, `timerSeconds: 30`, `basePoints: 100`, `rankBonus: [50,30,10]`, `wrongPenalty: 0`, `maxAttempts: 3`）
 2. 問題セットの `settings`
 3. 問題の `overrides`
-4. GM がゲーム中に上書きしたライブ設定（`timerSeconds` / `maxAttempts` / `wrongPenalty` のみ）
+4. GM がゲーム中に上書きしたライブ設定（全問共通の設定と同じ6項目）
 
-ライブ設定はルームに保持され、ゲームをまたいで有効であり続ける。出題中に変更した場合、現在の問題の締切はそのままで、次の問題から反映される。`maxAttempts` と `wrongPenalty` は現在の問題の以降の回答にも効く。
+ライブ設定はルームに保持され、ゲームをまたいで有効であり続ける。GM は上書き全体を送り直す形で変更し、空にすれば問題セットの設定に戻る。
+
+出題中に変更した場合も現在の問題にすぐ効く。
+
+- `timerMode` を変えると、現在の問題の締切を合わせ直す。`none` なら締切を消す。`fixed` なら締切が無ければ「今＋`timerSeconds`」で開始する。`afterFirstCorrect` なら締切が無く、すでに正解者がいれば「今＋`timerSeconds`」で開始し、いなければ最初の正解を待つ。すでに動いている締切は動かさない
+- `timerSeconds` だけを変えた場合、動いている締切はそのままで、次に締切を決めるときから使う
+- `maxAttempts` / `wrongPenalty` / `basePoints` / `rankBonus` は以降の回答から効く。すでに加減した点数は変えず、問題結果にも回答時の点数を出す
 
 ## 日本語フリーテキスト回答の判定
 

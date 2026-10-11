@@ -43,7 +43,7 @@ interface Question {
 }
 
 /** GM がゲーム中に上書きできる設定 */
-type LiveSettings = Pick<QuestionSettings, "timerSeconds" | "maxAttempts" | "wrongPenalty">;
+type LiveSettings = QuestionSettings;
 ```
 
 JSON インポート／エクスポートは `QuestionSet` から `id` を除いた形式（`QuestionSetInput`）を使う。
@@ -110,6 +110,7 @@ interface Answer {
   correct: boolean;
   submittedAt: number;         // サーバー受信時刻 (UNIX ms)
   correctRank: number | null;  // 正解者の何番目か
+  points?: number;             // 回答時に実際に加減した点数。設定をゲーム中に変えても結果表示を変えない
 }
 ```
 

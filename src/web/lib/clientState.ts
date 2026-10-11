@@ -65,8 +65,12 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
       return { ...s, participants: s.participants.filter((p) => p.id !== msg.participant.id) };
     case "kicked":
       return { ...s, kicked: true };
-    case "settingsUpdated":
-      return { ...s, settings: msg.settings };
+    case "settingsUpdated": {
+      // お手付き上限は今の問題にも効くので、残り回答回数の表示元も更新する
+      const eff = msg.settings.effective;
+      const question = s.question && eff ? { ...s.question, maxAttempts: eff.maxAttempts } : s.question;
+      return { ...s, settings: msg.settings, question };
+    }
     case "questionStarted":
       return {
         ...s, phase: "question", question: msg.question, questionResult: null, lastAnswerResult: null, finalEntries: null,

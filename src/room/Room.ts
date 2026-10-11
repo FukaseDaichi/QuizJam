@@ -175,6 +175,8 @@ export class Room extends DurableObject<Env> {
         this.save();
         this.broadcast({ type: "questionStarted", question });
         this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
+        // 開始で初めて「実際に効く設定」が決まるので配る（GM 管理パネルの表示用）
+        this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
         await this.armDeadline(question.deadlineAt);
         return;
       }
@@ -189,6 +191,8 @@ export class Room extends DurableObject<Env> {
         this.save();
         if (r.kind === "question") {
           this.broadcast({ type: "questionStarted", question: r.question });
+          // 問題ごとの上書きで効く設定が変わりうる
+          this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
           await this.armDeadline(r.question.deadlineAt);
         } else {
           this.broadcast({ type: "finalResult", entries: r.entries });
@@ -205,7 +209,13 @@ export class Room extends DurableObject<Env> {
       }
       case "updateSettings": {
         engine.setSettingsOverride(msg.settings);
+        // 出題中ならタイマーモードの変更を今の問題の締切に反映し、アラームを張り直す
+        const dl = engine.reconcileDeadline(now);
         this.save();
+        if (dl.changed) {
+          this.broadcast({ type: "deadlineSet", deadlineAt: dl.deadlineAt });
+          await this.armDeadline(dl.deadlineAt);
+        }
         this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
         return;
       }
@@ -270,11 +280,7 @@ export class Room extends DurableObject<Env> {
   // ---- messaging ----
   private settingsView(): SettingsView {
     const engine = this.engine!;
-    let effective: LiveSettings | null = null;
-    if (engine.questionSet) {
-      const { timerSeconds, maxAttempts, wrongPenalty } = engine.settings();
-      effective = { timerSeconds, maxAttempts, wrongPenalty };
-    }
+    const effective: LiveSettings | null = engine.questionSet ? engine.settings() : null;
     return { override: engine.settingsOverride(), effective };
   }
 

@@ -10,7 +10,8 @@ export interface QuestionSettings {
 }
 
 /** GM がゲーム中に上書きできる設定。問題セットや問題ごとの設定より優先する */
-export type LiveSettings = Pick<QuestionSettings, "timerSeconds" | "maxAttempts" | "wrongPenalty">;
+/** GM がゲーム中に上書きできる設定。全問共通の設定と同じ項目 */
+export type LiveSettings = QuestionSettings;
 
 export interface Question {
   id: string;
@@ -47,6 +48,8 @@ export interface Answer {
   correct: boolean;
   submittedAt: number;
   correctRank: number | null;
+  /** この回答で実際に加減した点数。設定をゲーム中に変えても結果表示が変わらないよう保持する（旧データには無い） */
+  points?: number;
 }
 
 export interface LeaderboardEntry {
