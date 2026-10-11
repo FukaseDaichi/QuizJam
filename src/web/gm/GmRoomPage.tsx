@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowRight, Crown, Home, Play, RotateCcw, Settings, Square, Users } from "lucide-react";
+import { ArrowRight, Crown, Home, PanelRightClose, PanelRightOpen, Play, RotateCcw, Settings, Square, Users } from "lucide-react";
 import { useRoomSocket } from "../lib/useRoomSocket";
 import { api } from "../lib/api";
 import { storage } from "../lib/storage";
@@ -28,6 +28,9 @@ export function GmRoomPage() {
   const [confettiSeed, setConfettiSeed] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
   const closePanel = useCallback(() => setPanelOpen(false), []);
+  // 集中モード: 右カラムを外して問題を横幅いっぱいに映す。GM の好みとしてブラウザに保存する
+  const [focus, setFocus] = useState(() => storage.getGmFocus());
+  const toggleFocus = useCallback(() => setFocus((f) => { storage.setGmFocus(!f); return !f; }), []);
 
   useEffect(() => {
     api.listQuestionSets().then((s) => {
@@ -71,11 +74,12 @@ export function GmRoomPage() {
           <span className="font-mono text-2xl font-bold tracking-widest">{roomCode}</span>
           <span className="inline-flex items-center gap-1"><Users size={20} aria-hidden />{connectedCount}名</span>
           {state.questionSetName && <span>{state.questionSetName}</span>}
+          <Button variant="secondary" icon={focus ? PanelRightOpen : PanelRightClose} onClick={toggleFocus} aria-pressed={focus}>{focus ? "通常表示" : "集中モード"}</Button>
           <Button variant="secondary" icon={Settings} onClick={() => setPanelOpen(true)} aria-haspopup="dialog" aria-expanded={panelOpen}>管理</Button>
         </div>
       </header>
 
-      <div className="grid grid-cols-[1fr_380px] gap-6 px-8 py-6">
+      <div className={`grid gap-6 px-8 py-6 ${focus ? "grid-cols-1" : "grid-cols-[1fr_380px]"}`}>
         <section className="flex flex-col gap-6">
           {state.phase === "lobby" && (
             <div className="grid grid-cols-[auto_1fr] gap-8">
@@ -148,7 +152,7 @@ export function GmRoomPage() {
           )}
         </section>
 
-        <aside>
+        {!focus && <aside>
           <Card tone="dark" title={showParticipants ? "参加者" : "ランキング"} icon={showParticipants ? Users : Crown} className="sticky top-6">
             {showParticipants ? (
               <ul className="space-y-2">
@@ -159,7 +163,7 @@ export function GmRoomPage() {
               </ul>
             ) : <Leaderboard entries={state.leaderboard} tone="dark" compact />}
           </Card>
-        </aside>
+        </aside>}
       </div>
 
       <footer className="flex items-center justify-end gap-3 border-t border-slate-800 px-8 py-4">
