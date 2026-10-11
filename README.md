@@ -1,7 +1,7 @@
 # QuizJam
 
 GMがPCで進行し、参加者がスマートフォンからQRコードで入室して回答するリアルタイムクイズ。
-設計: `docs/superpowers/specs/2026-10-05-quizjam-design.md` / デザイン: `docs/design-guide.md`
+設計書: `docs/`（入口は `docs/AGENTS.md`）/ デザイン: `docs/design-guide.md`
 
 本番: https://quizjam.franc-app.workers.dev/ （管理画面: https://quizjam.franc-app.workers.dev/admin ）
 
