@@ -1,4 +1,4 @@
-import type { Answer, LeaderboardEntry, Participant, Phase, QuestionSet, QuestionSettings } from "../shared/types";
+import type { Answer, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSet, QuestionSettings } from "../shared/types";
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
 import type { ErrorCode, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
@@ -13,6 +13,8 @@ export interface EngineState {
   deadlineAt: number | null;
   participants: Record<string, Participant>;
   answers: Answer[];
+  /** GM による設定の上書き。ゲームをまたいで保持する */
+  settingsOverride: Partial<LiveSettings>;
 }
 
 export type AnswerOutcome =
@@ -34,11 +36,13 @@ export class GameEngine {
       deadlineAt: null,
       participants: {},
       answers: [],
+      settingsOverride: {},
     });
   }
 
   static fromSnapshot(state: EngineState): GameEngine {
-    return new GameEngine(structuredClone(state));
+    // 旧スナップショットには settingsOverride が無い
+    return new GameEngine({ ...structuredClone(state), settingsOverride: structuredClone(state.settingsOverride ?? {}) });
   }
 
   snapshot(): EngineState {
@@ -77,6 +81,31 @@ export class GameEngine {
     return Object.values(this.s.participants).map((p) => ({ ...p }));
   }
 
+  // ---- GM live controls ----
+  adjustScore(id: string, delta: number): Participant | null {
+    const p = this.s.participants[id];
+    if (!p) return null;
+    p.score += delta;
+    return { ...p };
+  }
+
+  removeParticipant(id: string): Participant | null {
+    const p = this.s.participants[id];
+    if (!p) return null;
+    delete this.s.participants[id];
+    this.s.answers = this.s.answers.filter((a) => a.participantId !== id);
+    return { ...p };
+  }
+
+  settingsOverride(): Partial<LiveSettings> {
+    return { ...this.s.settingsOverride };
+  }
+
+  setSettingsOverride(patch: Partial<LiveSettings>): Partial<LiveSettings> {
+    this.s.settingsOverride = { ...this.s.settingsOverride, ...patch };
+    return this.settingsOverride();
+  }
+
   // ---- game flow ----
   start(set: QuestionSet, carryOverScores: boolean, now: number): QuestionView {
     if (set.questions.length === 0) throw new Error("question set is empty");
@@ -100,7 +129,7 @@ export class GameEngine {
 
   settings(index = this.s.currentIndex): QuestionSettings {
     if (!this.s.questionSet) throw new Error("no question set");
-    return resolveSettings(this.s.questionSet, index);
+    return { ...resolveSettings(this.s.questionSet, index), ...this.s.settingsOverride };
   }
 
   currentQuestionView(): QuestionView | null {

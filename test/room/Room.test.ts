@@ -238,3 +238,136 @@ describe("Room DO game flow", () => {
     expect(left.participant).toMatchObject({ id: p1.participantId, connected: false });
   });
 });
+
+describe("Room DO GM live controls", () => {
+  it("rejects live-control commands from players", async () => {
+    await initRoom("LIVE00");
+    const p1 = await join("LIVE00", "みさき");
+    const c1 = await connect("LIVE00", p1.participantToken);
+    await c1.waitFor("state");
+    c1.send({ type: "updateSettings", settings: { timerSeconds: 5 } });
+    expect((await c1.waitFor("error")).code).toBe("forbidden");
+    c1.send({ type: "adjustScore", participantId: p1.participantId, delta: 100 });
+    expect((await c1.waitFor("error")).code).toBe("forbidden");
+    c1.send({ type: "kick", participantId: p1.participantId });
+    expect((await c1.waitFor("error")).code).toBe("forbidden");
+  });
+
+  it("rejects malformed live-control payloads as bad_message", async () => {
+    await initRoom("LIVE01");
+    const gm = await connect("LIVE01", "gm-token");
+    await gm.waitFor("state");
+    for (const bad of [
+      { type: "updateSettings", settings: { timerSeconds: 0 } },
+      { type: "updateSettings", settings: { timerSeconds: 1.5 } },
+      { type: "updateSettings", settings: { maxAttempts: 0 } },
+      { type: "updateSettings", settings: { wrongPenalty: -1 } },
+      { type: "updateSettings", settings: { basePoints: 1 } },
+      { type: "updateSettings" },
+      { type: "adjustScore", participantId: "x", delta: "10" },
+      { type: "adjustScore", participantId: "x", delta: 1.5 },
+      { type: "kick" },
+    ]) {
+      gm.send(bad);
+      expect((await gm.waitFor("error")).code).toBe("bad_message");
+    }
+  });
+
+  it("updateSettings overrides the set from the next question and is included in state", async () => {
+    const set = await seedSet({ timerMode: "fixed", timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 });
+    await initRoom("LIVE02");
+    const gm = await connect("LIVE02", "gm-token");
+    const st0 = await gm.waitFor("state");
+    expect(st0.settings).toEqual({ override: {}, effective: null });
+    const p1 = await join("LIVE02", "みさき");
+    const c1 = await connect("LIVE02", p1.participantToken);
+    await c1.waitFor("state");
+
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    const q0 = await gm.waitFor("questionStarted");
+    const startedAt = q0.question.deadlineAt! - 30_000;
+
+    gm.send({ type: "updateSettings", settings: { timerSeconds: 5, maxAttempts: null } });
+    const upd = await gm.waitFor("settingsUpdated");
+    expect(upd.settings.override).toEqual({ timerSeconds: 5, maxAttempts: null });
+    expect(upd.settings.effective).toMatchObject({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 0 });
+
+    gm.send({ type: "close" });
+    await gm.waitFor("questionClosed");
+    gm.send({ type: "next" });
+    const q1 = await gm.waitFor("questionStarted", (m) => m.question.index === 1);
+    expect(q1.question.maxAttempts).toBeNull();
+    expect(q1.question.deadlineAt! - startedAt).toBeLessThan(30_000);
+
+    const gm2 = await connect("LIVE02", "gm-token");
+    const st = await gm2.waitFor("state");
+    expect(st.settings.override).toEqual({ timerSeconds: 5, maxAttempts: null });
+    expect(st.settings.effective).toMatchObject({ timerSeconds: 5, maxAttempts: null });
+  });
+
+  it("adjustScore changes the score and broadcasts the leaderboard", async () => {
+    await initRoom("LIVE03");
+    const gm = await connect("LIVE03", "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join("LIVE03", "みさき");
+    const c1 = await connect("LIVE03", p1.participantToken);
+    await c1.waitFor("state");
+
+    gm.send({ type: "adjustScore", participantId: p1.participantId, delta: -40 });
+    const lb = await c1.waitFor("leaderboard", (m) => m.entries.some((e) => e.score !== 0));
+    expect(lb.entries[0]).toMatchObject({ participantId: p1.participantId, score: -40 });
+
+    gm.send({ type: "adjustScore", participantId: "nobody", delta: 1 });
+    expect((await gm.waitFor("error")).code).toBe("participant_not_found");
+  });
+
+  it("kick removes the participant, notifies them, closes their socket and invalidates their token", async () => {
+    await initRoom("LIVE04");
+    const gm = await connect("LIVE04", "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join("LIVE04", "みさき");
+    const p2 = await join("LIVE04", "たろう");
+    const c1 = await connect("LIVE04", p1.participantToken);
+    const c2 = await connect("LIVE04", p2.participantToken);
+    await c1.waitFor("state"); await c2.waitFor("state");
+    const closed = new Promise<void>((resolve) => c1.ws.addEventListener("close", () => resolve()));
+
+    gm.send({ type: "kick", participantId: p1.participantId });
+    expect(await c1.waitFor("kicked")).toEqual({ type: "kicked" });
+    await closed;
+    const removed = await gm.waitFor("participantRemoved");
+    expect(removed.participant).toMatchObject({ id: p1.participantId, nickname: "みさき" });
+    expect((await c2.waitFor("participantRemoved")).participant.id).toBe(p1.participantId);
+
+    const res = await stubFor("LIVE04").fetch(`http://room/ws?token=${p1.participantToken}`, { headers: { Upgrade: "websocket" } });
+    expect(res.status).toBe(401);
+    const gm2 = await connect("LIVE04", "gm-token");
+    const st = await gm2.waitFor("state");
+    expect(st.participants.map((p) => p.id)).toEqual([p2.participantId]);
+    expect(st.leaderboard.map((e) => e.participantId)).toEqual([p2.participantId]);
+
+    gm.send({ type: "kick", participantId: p1.participantId });
+    expect((await gm.waitFor("error")).code).toBe("participant_not_found");
+  });
+
+  it("kicking the last undecided participant closes the question", async () => {
+    const set = await seedSet({ timerMode: "none" });
+    await initRoom("LIVE05");
+    const gm = await connect("LIVE05", "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join("LIVE05", "みさき");
+    const p2 = await join("LIVE05", "たろう");
+    const c1 = await connect("LIVE05", p1.participantToken);
+    const c2 = await connect("LIVE05", p2.participantToken);
+    await c1.waitFor("state"); await c2.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await c1.waitFor("questionStarted"); await c2.waitFor("questionStarted");
+    c1.send({ type: "answer", text: "りんご" });
+    await c1.waitFor("answerResult");
+
+    gm.send({ type: "kick", participantId: p2.participantId });
+    await gm.waitFor("participantRemoved");
+    const closed = await gm.waitFor("questionClosed");
+    expect(closed.result.results.map((r) => r.participantId)).toEqual([p1.participantId]);
+  });
+});

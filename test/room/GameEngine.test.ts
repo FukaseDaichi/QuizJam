@@ -281,3 +281,105 @@ describe("GameEngine close / next / final", () => {
     expect(e.deadlineAt).toBeNull();
   });
 });
+
+describe("GameEngine GM live controls", () => {
+  let e: GameEngine;
+  beforeEach(() => {
+    e = GameEngine.create("ABC123");
+    e.addParticipant("p1", "みさき");
+    e.addParticipant("p2", "たろう");
+  });
+
+  describe("settings override", () => {
+    it("starts with no override and reports the set's settings once started", () => {
+      expect(e.settingsOverride()).toEqual({});
+      e.start(makeSet({ timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 }), false, T0);
+      expect(e.settings()).toMatchObject({ timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 });
+    });
+
+    it("override takes precedence over set settings and per-question overrides", () => {
+      const set = makeSet({ timerSeconds: 30 });
+      set.questions[1].overrides = { timerSeconds: 10, maxAttempts: 1 };
+      e.start(set, false, T0);
+      e.setSettingsOverride({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 20 });
+      expect(e.settingsOverride()).toEqual({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 20 });
+      expect(e.settings(0)).toMatchObject({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 20 });
+      expect(e.settings(1)).toMatchObject({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 20 });
+    });
+
+    it("override can be set in the lobby and applies when the game starts", () => {
+      e.setSettingsOverride({ timerSeconds: 7 });
+      e.start(makeSet({ timerSeconds: 30 }), false, T0);
+      expect(e.deadlineAt).toBe(T0 + 7_000);
+    });
+
+    it("override applies from the next question, not the running one", () => {
+      e.start(makeSet({ timerSeconds: 30 }), false, T0);
+      e.setSettingsOverride({ timerSeconds: 5 });
+      expect(e.deadlineAt).toBe(T0 + 30_000);
+      e.closeQuestion(T0 + 1);
+      const r = e.next(T0 + 2);
+      expect(r.kind).toBe("question");
+      expect(e.deadlineAt).toBe(T0 + 2 + 5_000);
+    });
+
+    it("override of maxAttempts and wrongPenalty is used when judging answers", () => {
+      e.start(makeSet({ maxAttempts: 3, wrongPenalty: 0 }), false, T0);
+      e.setSettingsOverride({ maxAttempts: 1, wrongPenalty: 25 });
+      expect(e.submitAnswer("p1", "ちがう", T0 + 1)).toEqual({ kind: "wrong", remainingAttempts: 0, points: -25 });
+      expect(e.submitAnswer("p1", "りんご", T0 + 2)).toEqual({ kind: "rejected", code: "no_attempts_left" });
+      expect(e.getParticipant("p1")?.score).toBe(-25);
+    });
+
+    it("partial updates merge into the existing override", () => {
+      e.setSettingsOverride({ timerSeconds: 5 });
+      e.setSettingsOverride({ maxAttempts: 2 });
+      expect(e.settingsOverride()).toEqual({ timerSeconds: 5, maxAttempts: 2 });
+    });
+
+    it("override survives a snapshot round trip and endGame", () => {
+      e.setSettingsOverride({ timerSeconds: 5 });
+      const e2 = GameEngine.fromSnapshot(e.snapshot());
+      expect(e2.settingsOverride()).toEqual({ timerSeconds: 5 });
+      e2.endGame();
+      expect(e2.settingsOverride()).toEqual({ timerSeconds: 5 });
+    });
+  });
+
+  describe("adjustScore", () => {
+    it("adds a delta to the participant's score and returns the participant", () => {
+      expect(e.adjustScore("p1", 50)).toMatchObject({ id: "p1", score: 50 });
+      expect(e.adjustScore("p1", -30)).toMatchObject({ id: "p1", score: 20 });
+      expect(e.leaderboard()[0]).toMatchObject({ participantId: "p1", score: 20, rank: 1 });
+    });
+    it("returns null for an unknown participant", () => {
+      expect(e.adjustScore("nobody", 10)).toBeNull();
+    });
+  });
+
+  describe("removeParticipant", () => {
+    it("removes the participant and returns it", () => {
+      expect(e.removeParticipant("p1")).toMatchObject({ id: "p1", nickname: "みさき" });
+      expect(e.getParticipant("p1")).toBeNull();
+      expect(e.participants().map((p) => p.id)).toEqual(["p2"]);
+      expect(e.leaderboard().map((l) => l.participantId)).toEqual(["p2"]);
+    });
+    it("returns null for an unknown participant", () => {
+      expect(e.removeParticipant("nobody")).toBeNull();
+    });
+    it("drops the removed participant's answers so results and correct count ignore them", () => {
+      e.start(makeSet(), false, T0);
+      e.submitAnswer("p1", "りんご", T0 + 1);
+      e.submitAnswer("p2", "りんご", T0 + 2);
+      e.removeParticipant("p1");
+      expect(e.correctCount()).toBe(1);
+      const result = e.closeQuestion(T0 + 3);
+      expect(result.results.map((r) => r.participantId)).toEqual(["p2"]);
+    });
+    it("a removed participant can no longer answer", () => {
+      e.start(makeSet(), false, T0);
+      e.removeParticipant("p1");
+      expect(e.submitAnswer("p1", "りんご", T0 + 1)).toEqual({ kind: "rejected", code: "forbidden" });
+    });
+  });
+});

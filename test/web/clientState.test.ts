@@ -13,6 +13,7 @@ const baseState: StateMessage = {
   me: { id: "p1", nickname: "みさき", score: 0, connected: true, status: null },
   questionSetName: null,
   correctCount: 0,
+  settings: { override: {}, effective: null },
 };
 
 function withState(): ClientState {
@@ -91,6 +92,34 @@ describe("applyServerMessage", () => {
     expect(s.correctCountThisQuestion).toBe(3);
     s = applyServerMessage(s, { type: "questionStarted", question: { index: 1, total: 2, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
     expect(s.correctCountThisQuestion).toBe(0);
+  });
+
+  it("settings come from state and are replaced by settingsUpdated", () => {
+    let s = withState();
+    expect(s.settings).toEqual({ override: {}, effective: null });
+    const settings = { override: { timerSeconds: 5 }, effective: { timerSeconds: 5, maxAttempts: 3, wrongPenalty: 0 } };
+    s = applyServerMessage(s, { type: "settingsUpdated", settings }, T0);
+    expect(s.settings).toEqual(settings);
+  });
+
+  it("leaderboard also syncs scores into the participant list", () => {
+    let s = withState();
+    s = applyServerMessage(s, { type: "leaderboard", entries: [{ participantId: "p1", nickname: "みさき", score: 100, rank: 1 }] }, T0);
+    expect(s.participants[0].score).toBe(100);
+  });
+
+  it("participantRemoved drops the participant from the list", () => {
+    let s = withState();
+    s = applyServerMessage(s, { type: "participantJoined", participant: { id: "p2", nickname: "たろう", score: 0, connected: true } }, T0);
+    s = applyServerMessage(s, { type: "participantRemoved", participant: { id: "p1", nickname: "みさき", score: 0, connected: true } }, T0);
+    expect(s.participants.map((p) => p.id)).toEqual(["p2"]);
+  });
+
+  it("kicked sets the kicked flag", () => {
+    let s = withState();
+    expect(s.kicked).toBe(false);
+    s = applyServerMessage(s, { type: "kicked" }, T0);
+    expect(s.kicked).toBe(true);
   });
 
   it("questionClosed, finalResult and error", () => {

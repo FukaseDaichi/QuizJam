@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../worker/env";
 import { GameEngine, type EngineState } from "./GameEngine";
-import { parseClientMessage, type ClientMessage, type ServerMessage, type StateMessage, type ErrorCode } from "../shared/messages";
+import { parseClientMessage, type ClientMessage, type ServerMessage, type StateMessage, type SettingsView, type ErrorCode } from "../shared/messages";
 import { getQuestionSet } from "../worker/questionSets";
+import type { LiveSettings } from "../shared/types";
 
 type Attachment = { role: "gm" } | { role: "player"; participantId: string };
 
@@ -202,6 +203,32 @@ export class Room extends DurableObject<Env> {
         await this.scheduleCleanup();
         return;
       }
+      case "updateSettings": {
+        engine.setSettingsOverride(msg.settings);
+        this.save();
+        this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
+        return;
+      }
+      case "adjustScore": {
+        if (!engine.adjustScore(msg.participantId, msg.delta)) return this.sendError(ws, "participant_not_found", this.errorText("participant_not_found"));
+        this.save();
+        this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
+        return;
+      }
+      case "kick": {
+        const removed = engine.removeParticipant(msg.participantId);
+        if (!removed) return this.sendError(ws, "participant_not_found", this.errorText("participant_not_found"));
+        this.ctx.storage.sql.exec("DELETE FROM tokens WHERE participant_id = ?", removed.id);
+        this.save();
+        for (const sock of this.ctx.getWebSockets(`pid:${removed.id}`)) {
+          this.send(sock, { type: "kicked" });
+          try { sock.close(4000, "kicked"); } catch { /* already closed */ }
+        }
+        this.broadcast({ type: "participantRemoved", participant: removed });
+        this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
+        if (engine.allParticipantsDone()) await this.closeQuestion(now);
+        return;
+      }
     }
   }
 
@@ -241,6 +268,16 @@ export class Room extends DurableObject<Env> {
   }
 
   // ---- messaging ----
+  private settingsView(): SettingsView {
+    const engine = this.engine!;
+    let effective: LiveSettings | null = null;
+    if (engine.questionSet) {
+      const { timerSeconds, maxAttempts, wrongPenalty } = engine.settings();
+      effective = { timerSeconds, maxAttempts, wrongPenalty };
+    }
+    return { override: engine.settingsOverride(), effective };
+  }
+
   private stateFor(attachment: Attachment): StateMessage {
     const engine = this.engine!;
     const me = attachment.role === "player" ? engine.getParticipant(attachment.participantId) : null;
@@ -257,6 +294,7 @@ export class Room extends DurableObject<Env> {
       me: me ? { ...me, status: engine.myStatus(me.id) } : null,
       questionSetName: engine.questionSet?.name ?? null,
       correctCount: engine.correctCount(),
+      settings: this.settingsView(),
     };
   }
 
@@ -291,6 +329,7 @@ export class Room extends DurableObject<Env> {
       case "no_attempts_left": return "回答回数の上限に達しました";
       case "forbidden": return "権限がありません";
       case "question_set_not_found": return "問題セットが見つかりません";
+      case "participant_not_found": return "参加者が見つかりません";
       case "invalid_state": return "操作を実行できません";
       case "bad_message": return "メッセージを解釈できません";
     }

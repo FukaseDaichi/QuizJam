@@ -17,6 +17,10 @@ export function PlayPage() {
   useEffect(() => { if (!player) navigate(`/play/${roomCode}`, { replace: true }); }, [player, roomCode, navigate]);
 
   const { state, send, clearError } = useRoomSocket(roomCode, player?.participantToken ?? null);
+  // GM にキックされたら保存した参加情報を消して参加画面に戻す
+  useEffect(() => {
+    if (state.kicked) { storage.clearPlayer(roomCode); navigate(`/play/${roomCode}`, { replace: true, state: { kicked: true } }); }
+  }, [state.kicked, roomCode, navigate]);
   const [text, setText] = useState("");
   const [shake, setShake] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);

@@ -9,6 +9,9 @@ export interface QuestionSettings {
   maxAttempts: number | null;
 }
 
+/** GM がゲーム中に上書きできる設定。問題セットや問題ごとの設定より優先する */
+export type LiveSettings = Pick<QuestionSettings, "timerSeconds" | "maxAttempts" | "wrongPenalty">;
+
 export interface Question {
   id: string;
   type: "anagram";
