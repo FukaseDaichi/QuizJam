@@ -15,6 +15,8 @@ export const storage = {
   getPlayer: (code: string) => read<StoredPlayer>(`player:${code}`),
   setPlayer: (code: string, v: StoredPlayer) => write(`player:${code}`, v),
   clearPlayer: (code: string) => write(`player:${code}`, null),
+  getGmFocus: () => read<boolean>("gmFocus") ?? false,
+  setGmFocus: (v: boolean) => write("gmFocus", v),
   getPassphrase: () => read<string>("admin"),
   setPassphrase: (v: string | null) => write("admin", v),
 };
