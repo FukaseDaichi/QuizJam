@@ -41,7 +41,7 @@ export interface QuestionSet {
   questions: Question[];
 }
 
-export type Phase = "lobby" | "question" | "questionResult" | "finalResult";
+export type Phase = "lobby" | "intro" | "question" | "questionResult" | "finalResult";
 
 export interface Participant {
   id: string;

@@ -1,13 +1,15 @@
 import type { Answer, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSet, QuestionSettings } from "../shared/types";
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
-import type { ErrorCode, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
+import type { ErrorCode, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
 
 export interface EngineState {
   roomCode: string;
   phase: Phase;
   questionSet: QuestionSet | null;
   currentIndex: number;
+  /** intro フェーズで映しているスライド。0 がタイトル、1..n が introSlides[n-1] */
+  introIndex: number;
   carryOverScores: boolean;
   questionStartedAt: number | null;
   deadlineAt: number | null;
@@ -22,6 +24,11 @@ export type AnswerOutcome =
   | { kind: "wrong"; remainingAttempts: number | null; points: number }
   | { kind: "rejected"; code: ErrorCode };
 
+export type NextOutcome =
+  | { kind: "intro"; intro: IntroView }
+  | { kind: "question"; question: QuestionView }
+  | { kind: "final"; entries: LeaderboardEntry[] };
+
 export class GameEngine {
   private constructor(private s: EngineState) {}
 
@@ -31,6 +38,7 @@ export class GameEngine {
       phase: "lobby",
       questionSet: null,
       currentIndex: 0,
+      introIndex: 0,
       carryOverScores: false,
       questionStartedAt: null,
       deadlineAt: null,
@@ -41,8 +49,12 @@ export class GameEngine {
   }
 
   static fromSnapshot(state: EngineState): GameEngine {
-    // 旧スナップショットには settingsOverride が無い
-    return new GameEngine({ ...structuredClone(state), settingsOverride: structuredClone(state.settingsOverride ?? {}) });
+    // 旧スナップショットには settingsOverride / introIndex が無い
+    return new GameEngine({
+      ...structuredClone(state),
+      settingsOverride: structuredClone(state.settingsOverride ?? {}),
+      introIndex: state.introIndex ?? 0,
+    });
   }
 
   snapshot(): EngineState {
@@ -54,6 +66,7 @@ export class GameEngine {
   get roomCode(): string { return this.s.roomCode; }
   get questionSet(): QuestionSet | null { return this.s.questionSet; }
   get currentIndex(): number { return this.s.currentIndex; }
+  get introIndex(): number { return this.s.introIndex; }
 
   // ---- participants ----
   addParticipant(id: string, nickname: string): Participant {
@@ -126,7 +139,8 @@ export class GameEngine {
   }
 
   // ---- game flow ----
-  start(set: QuestionSet, carryOverScores: boolean, now: number): QuestionView {
+  /** 問題セットを読み込み、タイトルスライド（intro フェーズ）から始める。第1問は next() で開く */
+  start(set: QuestionSet, carryOverScores: boolean): IntroView {
     if (set.questions.length === 0) throw new Error("question set is empty");
     this.s.questionSet = structuredClone(set);
     this.s.carryOverScores = carryOverScores;
@@ -134,8 +148,23 @@ export class GameEngine {
     if (!carryOverScores) {
       for (const p of Object.values(this.s.participants)) p.score = 0;
     }
-    this.openQuestion(0, now);
-    return this.currentQuestionView()!;
+    this.s.phase = "intro";
+    this.s.introIndex = 0;
+    this.s.currentIndex = 0;
+    this.s.questionStartedAt = null;
+    this.s.deadlineAt = null;
+    return this.introView()!;
+  }
+
+  introView(): IntroView | null {
+    const set = this.s.questionSet;
+    if (!set || this.s.phase !== "intro") return null;
+    const slides = set.introSlides ?? [];
+    const i = this.s.introIndex;
+    const slide: IntroSlideView = i === 0
+      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0) }
+      : { kind: "slide", heading: slides[i - 1].heading, body: slides[i - 1].body, imageUrl: slides[i - 1].imageUrl };
+    return { index: i, total: 1 + slides.length, slide };
   }
 
   protected openQuestion(index: number, now: number): void {
@@ -172,7 +201,7 @@ export class GameEngine {
   }
 
   myStatus(participantId: string): MyAnswerStatus | null {
-    if (!this.s.questionSet || this.s.phase === "lobby" || this.s.phase === "finalResult") return null;
+    if (!this.s.questionSet || this.s.phase === "lobby" || this.s.phase === "intro" || this.s.phase === "finalResult") return null;
     const mine = this.answersFor(this.s.currentIndex).filter((a) => a.participantId === participantId);
     const correct = mine.find((a) => a.correct);
     return { attemptsUsed: mine.length, correct: !!correct, correctRank: correct?.correctRank ?? null };
@@ -239,8 +268,18 @@ export class GameEngine {
     return { answers: [...q.answers], results };
   }
 
-  next(now: number): { kind: "question"; question: QuestionView } | { kind: "final"; entries: LeaderboardEntry[] } {
-    if (this.s.phase !== "questionResult" || !this.s.questionSet) throw new Error("not in questionResult phase");
+  next(now: number): NextOutcome {
+    if (!this.s.questionSet) throw new Error("no question set");
+    if (this.s.phase === "intro") {
+      const slideCount = (this.s.questionSet.introSlides ?? []).length;
+      if (this.s.introIndex < slideCount) {
+        this.s.introIndex += 1;
+        return { kind: "intro", intro: this.introView()! };
+      }
+      this.openQuestion(0, now);
+      return { kind: "question", question: this.currentQuestionView()! };
+    }
+    if (this.s.phase !== "questionResult") throw new Error("not in intro or questionResult phase");
     const nextIndex = this.s.currentIndex + 1;
     if (nextIndex >= this.s.questionSet.questions.length) {
       this.s.phase = "finalResult";
@@ -254,6 +293,7 @@ export class GameEngine {
 
   endGame(): void {
     this.s.phase = "lobby";
+    this.s.introIndex = 0;
     this.s.deadlineAt = null;
     this.s.questionStartedAt = null;
     this.s.currentIndex = 0;
