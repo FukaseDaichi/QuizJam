@@ -44,7 +44,7 @@
 | `answer` | 参加者 | `{ text }` | 回答送信 |
 | `start` | GM | `{ questionSetId, carryOverScores }` | ゲーム開始。`lobby` か `finalResult` のときのみ |
 | `close` | GM | なし | 現在の問題を手動締切 |
-| `next` | GM | なし | 次の問題へ。最終問題なら最終結果へ |
+| `next` | GM | なし | 次へ。`intro` 中は次の説明スライドか第1問へ、`questionResult` 中は次の問題か最終結果へ |
 | `endGame` | GM | なし | ルームをロビーに戻す |
 | `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き全体。送った内容で置き換え、`{}` で解除。`timerMode` は3モードのいずれか、`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`basePoints` / `wrongPenalty` は 0 以上の整数、`rankBonus` は 0 以上の整数の配列（20個まで）。出題中なら締切を合わせ直し、変われば `deadlineSet` を送る |
 | `adjustScore` | GM | `{ participantId, delta }` | 参加者の点数を加減 |
@@ -62,6 +62,7 @@
 | `participantRemoved` | 全員 | `{ participant }` | キックで削除 |
 | `kicked` | キックされた本人 | なし | 直後にサーバーがソケットを閉じる（code 4000） |
 | `settingsUpdated` | 全員 | `{ settings: SettingsView }` | ライブ設定の変更。出題のたび（`start` / `next`）にも送り、実際に効く設定を知らせる |
+| `introStarted` | 全員 | `{ intro: IntroView }` | タイトル・説明スライドの表示。`start` と `intro` 中の `next` で送る |
 | `questionStarted` | 全員 | `{ question: QuestionView }` | 出題 |
 | `deadlineSet` | 全員 | `{ deadlineAt }` | 締切時刻が決まった・消えたとき（正解者トリガー、ライブ設定のタイマー変更）。`null` は締切なし |
 | `answerResult` | 回答者本人 | `{ correct, correctRank, remainingAttempts, points }` | 回答判定結果。正解時の `remainingAttempts` は `null` |
@@ -80,6 +81,7 @@ interface StateMessage {
   phase: Phase;
   participants: Participant[];
   leaderboard: LeaderboardEntry[];
+  intro: IntroView | null;               // タイトル・説明スライド表示中のみ
   question: QuestionView | null;         // 出題中・結果表示中のみ
   questionResult: QuestionResultView | null;   // 結果表示中のみ
   me: (Participant & { status: MyAnswerStatus | null }) | null;   // 参加者のみ
@@ -95,7 +97,17 @@ interface QuestionView {
   deadlineAt: number | null;
   maxAttempts: number | null;
 }
+
+interface IntroView {
+  index: number;                   // 0 がタイトル
+  total: number;                   // 1 + introSlides.length
+  slide:
+    | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings }
+    | { kind: "slide"; heading?: string; body?: string; imageUrl?: string };
+}
 ```
+
+タイトルの `settings` は第1問に実際に効く設定（GM のライブ上書きを含む）。
 
 ### エラーコード
 
@@ -106,7 +118,7 @@ interface QuestionView {
 | `already_correct` | 正解済みの再回答 |
 | `no_attempts_left` | お手付き上限到達 |
 | `forbidden` | 権限のない操作 |
-| `invalid_state` | そのフェーズで行えない GM 操作、または内部エラー |
+| `invalid_state` | そのフェーズで行えない GM 操作（タイトル・説明スライド表示中の `close` など）、または内部エラー |
 | `question_set_not_found` | 開始時に問題セットが無い、または問題が0件 |
 | `participant_not_found` | スコア調整・キックの対象が居ない |
 | `bad_message` | JSON として解釈できない、または未知の type・不正な payload |
@@ -115,7 +127,7 @@ interface QuestionView {
 
 - サーバーが締切時刻 `deadlineAt`（UNIX ms）を配信し、クライアントは `state` の `serverTime` との差で自分の時計を補正して残り秒数（切り上げ）を描画する。
 - 締切の確定はサーバー側で行う。Durable Object の Alarm で `deadlineAt` に起床し `questionClosed` を送る。クライアントの 0 秒表示は表示用にすぎない。
-- Alarm は1つしか持てないため、`alarmKind` で用途を区別する。締切待ちのときは `deadline`、それ以外（ロビー・結果表示・締切なしの出題中・最終結果）は24時間後の `cleanup` を設定する。
+- Alarm は1つしか持てないため、`alarmKind` で用途を区別する。締切待ちのときは `deadline`、それ以外（ロビー・タイトル・説明スライド表示中・結果表示・締切なしの出題中・最終結果）は24時間後の `cleanup` を設定する。
 - `cleanup` の Alarm が発火すると全接続を閉じ、ストレージをすべて削除する。
 
 ## 再接続

@@ -19,8 +19,17 @@ interface QuestionSet {
   name: string;                // 企画名（タイトルスライドに表示）
   coverImageUrl?: string;      // 表紙画像
   slideBackground?: string;    // 問題スライドの背景色（#rrggbb）。画像の地の色に合わせる用途
+  introSlides?: IntroSlide[];  // 説明スライド。省略時は無し。20枚まで
   settings: QuestionSettings;
   questions: Question[];
+}
+
+/** ゲーム冒頭、タイトルの後に映す説明スライド */
+interface IntroSlide {
+  id: string;
+  heading?: string;            // 100文字まで
+  body?: string;               // 複数行可。1000文字まで
+  imageUrl?: string;
 }
 
 interface QuestionSettings {
@@ -56,6 +65,8 @@ API 受信時とインポート時に同じ検証を適用する。
 - `settings` は省略可。指定したキーだけ検証し、残りは既定値で補う。`timerMode` は3モードのいずれか、`timerSeconds` は 0 以上、`maxAttempts` は `null` か 1 以上
 - `coverImageUrl` / `imageUrl` は `/api/images/<key>` か `https://` で始まる 500 文字以内の URL
 - `slideBackground` は `#rrggbb`
+- `introSlides` は省略可。20件まで。各要素は `heading`（100文字以内）・`body`（1000文字以内）・`imageUrl` のいずれか1つが必須。空文字は無指定として扱う。空なら保存時に省略する
+- `introSlides[].id` が無ければサーバーが UUID を採番する
 - `questions[].answers` は空でない文字列の配列（1件以上）
 - `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する
 - `questions[].id` が無ければサーバーが UUID を採番する
@@ -85,9 +96,10 @@ CREATE TABLE question_sets (
 ```ts
 interface EngineState {
   roomCode: string;            // 6文字。紛らわしい文字（0/O/1/I）を除いた英大文字と数字
-  phase: "lobby" | "question" | "questionResult" | "finalResult";
+  phase: "lobby" | "intro" | "question" | "questionResult" | "finalResult";
   questionSet: QuestionSet | null;   // 開始時に D1 から読み込んだコピー
   currentIndex: number;
+  introIndex: number;          // intro 中のスライド。0 がタイトル、1..n が introSlides[n-1]
   carryOverScores: boolean;
   questionStartedAt: number | null;
   deadlineAt: number | null;   // 締切時刻 (UNIX ms)。afterFirstCorrect では最初の正解時に設定
