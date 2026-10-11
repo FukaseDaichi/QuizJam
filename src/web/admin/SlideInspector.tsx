@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { TIMER_MODE_LABELS } from "../lib/labels";
 import { ChevronDown, ChevronRight, Plus, Shuffle, X } from "lucide-react";
-import type { Question, QuestionSettings, TimerMode } from "../../shared/types";
+import type { IntroSlide, Question, QuestionSettings, TimerMode } from "../../shared/types";
 import { shuffleAnagram } from "../../shared/anagram";
 import { Button } from "../components/Button";
 import { Field, SectionTitle, inputClass, textareaClass } from "./fields";
@@ -62,6 +62,25 @@ export function TitleInspector({ name, coverImageUrl, slideBackground, settings,
           </Field>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 説明スライド＝見出し・本文・画像。どれか1つは必要 */
+export function IntroInspector({ slide, passphrase, onChange }: {
+  slide: IntroSlide; passphrase: string; onChange: (patch: Partial<IntroSlide>) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <Field label="見出し（任意）">
+        <input value={slide.heading ?? ""} onChange={(e) => onChange({ heading: e.target.value || undefined })} placeholder="例: ルール説明" maxLength={100} className={`${inputClass} text-lg font-bold`} autoFocus />
+      </Field>
+      <Field label="本文（任意）" hint="改行はそのまま表示。1000文字まで">
+        <textarea rows={8} value={slide.body ?? ""} onChange={(e) => onChange({ body: e.target.value || undefined })} maxLength={1000}
+          placeholder={"例: 1問につき3回まで回答できます\n早く正解するほど高得点"} className={textareaClass} />
+      </Field>
+      <ImageField label="画像（任意）" value={slide.imageUrl} onChange={(imageUrl) => onChange({ imageUrl })} passphrase={passphrase} />
+      <p className="text-xs text-slate-500">見出し・本文・画像のどれか1つは必要です。</p>
     </div>
   );
 }
