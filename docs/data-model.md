@@ -65,7 +65,7 @@ API 受信時とインポート時に同じ検証を適用する。
 - `settings` は省略可。指定したキーだけ検証し、残りは既定値で補う。`timerMode` は3モードのいずれか、`timerSeconds` は 0 以上、`maxAttempts` は `null` か 1 以上
 - `coverImageUrl` / `imageUrl` は `/api/images/<key>` か `https://` で始まる 500 文字以内の URL
 - `slideBackground` は `#rrggbb`
-- `introSlides` は省略可。20件まで。各要素は `heading`（100文字以内）・`body`（1000文字以内）・`imageUrl` のいずれか1つが必須。空文字は無指定として扱う。空なら保存時に省略する
+- `introSlides` は省略可。20件まで。各要素は `heading`（100文字以内）・`body`（1000文字以内）・`imageUrl` のいずれか1つが必須。`heading` / `body` / `prompt` は前後の空白を除いて保存し、空白だけなら無指定として扱う。`introSlides` が空なら保存時に省略する
 - `introSlides[].id` が無ければサーバーが UUID を採番する
 - `questions[].answers` は空でない文字列の配列（1件以上）
 - `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する
