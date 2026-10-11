@@ -7,7 +7,8 @@ import { api } from "../lib/api";
 import { Button } from "../components/Button";
 import { AdminGate } from "./AdminGate";
 import { DEFAULT_SETTINGS, resolveSettings } from "../../shared/defaults";
-import { validateQuestionSetInput, type QuestionSetInput } from "../../shared/validateQuestionSet";
+import { MAX_INTRO_SLIDES, validateQuestionSetInput, type QuestionSetInput } from "../../shared/validateQuestionSet";
+import { findProblem, introEmpty, isIntroSel, questionIncomplete, type EditorDraft, type Selection } from "../lib/editorChecks";
 import type { IntroSlide, Question, QuestionSet, QuestionSettings } from "../../shared/types";
 import { IntroSlidePreview, QuestionSlidePreview, TitleSlidePreview } from "../components/Slides";
 import { IntroInspector, QuestionInspector, TitleInspector } from "./SlideInspector";
@@ -16,11 +17,6 @@ export function QuestionSetEditPage() {
   return <AdminGate>{(pass) => <Editor passphrase={pass} />}</AdminGate>;
 }
 
-/** 選択中のスライド。"title" がタイトル、{ intro } が説明スライド、数値が問題のインデックス */
-type Selection = "title" | number | { intro: number };
-
-const isIntroSel = (s: Selection): s is { intro: number } => typeof s === "object";
-
 function newQuestion(): Question {
   return { id: crypto.randomUUID(), type: "anagram", prompt: "", answers: [""] };
 }
@@ -28,31 +24,9 @@ function newIntroSlide(): IntroSlide {
   return { id: crypto.randomUUID() };
 }
 
-interface Draft { name: string; coverImageUrl?: string; slideBackground?: string; introSlides: IntroSlide[]; settings: QuestionSettings; questions: Question[] }
+type Draft = EditorDraft;
 
 const EMPTY_DRAFT: Draft = { name: "", introSlides: [], settings: DEFAULT_SETTINGS, questions: [newQuestion()] };
-
-function introEmpty(s: IntroSlide): boolean {
-  return !s.heading?.trim() && !s.body?.trim() && !s.imageUrl;
-}
-
-/** 保存前チェック。問題のある最初のスライドを返す */
-function findProblem(d: Draft): { slide: Selection; message: string } | null {
-  if (!d.name.trim()) return { slide: "title", message: "企画名を入力してください" };
-  if (d.questions.length === 0) return { slide: "title", message: "問題を1問以上追加してください" };
-  for (const [i, s] of d.introSlides.entries()) {
-    if (introEmpty(s)) return { slide: { intro: i }, message: `説明スライド${i + 1}に見出し・本文・画像のどれかを入れてください` };
-  }
-  for (const [i, q] of d.questions.entries()) {
-    if (!q.answers.some((a) => a.trim())) return { slide: i, message: `第${i + 1}問の正解を入力してください` };
-    if (!q.prompt.trim() && !q.imageUrl) return { slide: i, message: `第${i + 1}問の出題文か画像を入れてください（出題文は「生成」で正解から作れます）` };
-  }
-  return null;
-}
-
-function questionIncomplete(q: Question): boolean {
-  return (!q.prompt.trim() && !q.imageUrl) || !q.answers.some((a) => a.trim());
-}
 
 function toInput(d: Draft): QuestionSetInput | { error: string } {
   return validateQuestionSetInput({
@@ -290,7 +264,7 @@ function Editor({ passphrase }: { passphrase: string }) {
             })}
           </ol>
           <div className="flex flex-col gap-2 border-t border-slate-800 p-3">
-            <Button type="button" variant="secondary" icon={Presentation} className="w-full" onClick={addIntro} disabled={introCount >= 20}>説明スライドを追加</Button>
+            <Button type="button" variant="secondary" icon={Presentation} className="w-full" onClick={addIntro} disabled={introCount >= MAX_INTRO_SLIDES}>説明スライドを追加</Button>
             <Button type="button" variant="secondary" icon={Plus} className="w-full" onClick={() => addQuestion()}>問題を追加</Button>
           </div>
         </nav>
@@ -312,7 +286,7 @@ function Editor({ passphrase }: { passphrase: string }) {
               <div className="ml-6 flex items-center gap-1 border-l border-slate-700 pl-6">
                 <button type="button" onClick={() => moveIntro(selected.intro, -1)} disabled={selected.intro === 0} className={toolBtn} aria-label="前へ移動"><ArrowUp size={18} /></button>
                 <button type="button" onClick={() => moveIntro(selected.intro, 1)} disabled={selected.intro >= introCount - 1} className={toolBtn} aria-label="後ろへ移動"><ArrowDown size={18} /></button>
-                <button type="button" onClick={() => duplicateIntro(selected.intro)} className={toolBtn} aria-label="この説明スライドを複製"><Copy size={18} /></button>
+                <button type="button" onClick={() => duplicateIntro(selected.intro)} disabled={introCount >= MAX_INTRO_SLIDES} className={toolBtn} aria-label="この説明スライドを複製"><Copy size={18} /></button>
                 <button type="button" onClick={() => removeIntro(selected.intro)} className={`${toolBtn} text-red-300`} aria-label="この説明スライドを削除"><Trash2 size={18} /></button>
               </div>
             )}

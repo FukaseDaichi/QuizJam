@@ -76,6 +76,10 @@ export function IntroSlidePreview({ heading, body, imageUrl, compact = false }: 
         {body && !compact && (
           <p className={`overflow-hidden whitespace-pre-wrap break-words text-left leading-relaxed text-slate-200 ${imageUrl ? "max-h-[35%] shrink-0" : "max-h-full"} ${introBodySizeClass(body.length, !!imageUrl)}`}>{body}</p>
         )}
+        {/* サムネイルでは本文を省くが、見出しも画像も無いスライドは本文の1行目で見分けられるようにする */}
+        {body && compact && !heading && !imageUrl && (
+          <p className="line-clamp-2 break-words text-[3.5cqw] font-bold text-slate-200">{body.split("\n").find((l) => l.trim()) ?? ""}</p>
+        )}
         {empty && <p className="text-[4cqw] text-slate-500">見出し・本文・画像のどれかを入力</p>}
       </div>
     </SlideFrame>
