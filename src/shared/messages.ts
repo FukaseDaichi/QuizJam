@@ -133,6 +133,21 @@ export type ErrorCode =
   | "participant_not_found"
   | "bad_message";
 
+const SERVER_TYPES = new Set<ServerMessage["type"]>([
+  "state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated",
+  "introStarted", "questionStarted", "deadlineSet", "answerResult", "someoneCorrect", "leaderboard",
+  "questionClosed", "finalResult", "error",
+]);
+
+/**
+ * このビルドのクライアントが知っている type か。
+ * デプロイ後も開きっぱなしのブラウザは新しいサーバーから未知の type を受け取りうる。
+ * その場合はクライアントが古いので、無視するか再読み込みする
+ */
+export function isKnownServerMessage(x: unknown): x is ServerMessage {
+  return typeof x === "object" && x !== null && SERVER_TYPES.has((x as { type?: unknown }).type as ServerMessage["type"]);
+}
+
 export type ServerMessage =
   | StateMessage
   | { type: "participantJoined"; participant: Participant }
