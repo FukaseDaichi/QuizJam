@@ -11,18 +11,31 @@ export function TitleSlidePreview({ name, coverImageUrl, questionCount, settings
   name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; compact?: boolean;
 }) {
   const timer = settings.timerMode === "none" ? "GMが締切" : settings.timerMode === "fixed" ? `${settings.timerSeconds}秒` : `正解後${settings.timerSeconds}秒`;
+  const rules = (
+    <>
+      全{questionCount}問 ・ <Timer className="inline h-[2.4cqw] w-[2.4cqw] align-[-0.15em]" aria-hidden /> {timer}
+      {settings.maxAttempts !== null && ` ・ お手付き${settings.maxAttempts}回まで`}
+    </>
+  );
+  // 表紙画像があるときはタイトル文字が画像に含まれている運用なので、画像をそのまま映し、ルールだけ下部に重ねる
+  if (coverImageUrl) {
+    return (
+      <SlideFrame>
+        <img src={coverImageUrl} alt={name} className="absolute inset-0 h-full w-full object-contain" />
+        {!compact && (
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 via-slate-950/60 to-transparent px-[6cqw] pb-[2.4cqw] pt-[6cqw] text-center">
+            <p className="text-[2.4cqw] font-bold text-white drop-shadow-[0_0.2cqw_0.6cqw_rgba(0,0,0,0.9)]">{rules}</p>
+          </div>
+        )}
+      </SlideFrame>
+    );
+  }
   return (
     <SlideFrame>
-      {coverImageUrl && <img src={coverImageUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
       <div className="relative flex h-full flex-col items-center justify-center gap-[2cqw] px-[6cqw] text-center">
         <p className="text-[2.2cqw] font-bold tracking-[0.3em] text-slate-300">QuizJam</p>
         <h2 className={`text-brand break-all font-black leading-tight ${name ? "text-[7cqw]" : "text-[5cqw] opacity-40"}`}>{name || "企画名を入力"}</h2>
-        {!compact && (
-          <p className="text-[2.4cqw] text-slate-300">
-            全{questionCount}問 ・ <Timer className="inline h-[2.4cqw] w-[2.4cqw] align-[-0.15em]" aria-hidden /> {timer}
-            {settings.maxAttempts !== null && ` ・ お手付き${settings.maxAttempts}回まで`}
-          </p>
-        )}
+        {!compact && <p className="text-[2.4cqw] text-slate-300">{rules}</p>}
       </div>
     </SlideFrame>
   );
