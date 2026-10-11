@@ -67,3 +67,21 @@ describe("validateQuestionSetInput introSlides", () => {
     expect(validateQuestionSetInput({ ...base, questions, introSlides: "nope" })).toEqual({ error: "introSlides must be an array" });
   });
 });
+
+describe("validateQuestionSetInput whitespace", () => {
+  const questions = [{ prompt: "ごんり", answers: ["りんご"] }];
+
+  it("treats whitespace-only heading and body as empty and trims stored text", () => {
+    expect(validateQuestionSetInput({ ...base, questions, introSlides: [{ heading: "  ", body: "\n \t" }] })).toEqual({ error: "introSlides[0] is empty" });
+    const v = validateQuestionSetInput({ ...base, questions, introSlides: [{ heading: " ルール ", body: " 本文\n2行目 \n" }] });
+    expect("error" in v).toBe(false);
+    if ("error" in v) return;
+    expect(v.introSlides![0]).toMatchObject({ heading: "ルール", body: "本文\n2行目" });
+  });
+
+  it("treats a whitespace-only prompt as missing and trims the prompt", () => {
+    expect(validateQuestionSetInput({ ...base, questions: [{ prompt: "   ", answers: ["りんご"] }] })).toEqual({ error: "questions[0].prompt is required" });
+    const v = validateQuestionSetInput({ ...base, questions: [{ prompt: " ごんり ", answers: ["りんご"] }] });
+    expect("error" in v ? v.error : v.questions[0].prompt).toBe("ごんり");
+  });
+});

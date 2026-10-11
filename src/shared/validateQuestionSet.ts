@@ -19,13 +19,14 @@ function optionalImageUrl(x: unknown, field: string): string | undefined | { err
   return isValidImageUrl(x) ? x : { error: `${field} invalid` };
 }
 
-const MAX_INTRO_SLIDES = 20;
+export const MAX_INTRO_SLIDES = 20;
 
-/** 省略・空文字は undefined。文字列でないか長すぎれば null */
+/** 省略・空白だけは undefined。文字列でないか長すぎれば null。前後の空白は除く */
 function optionalText(x: unknown, max: number): string | undefined | null {
-  if (x === undefined || x === null || x === "") return undefined;
+  if (x === undefined || x === null) return undefined;
   if (typeof x !== "string" || x.length > max) return null;
-  return x;
+  const t = x.trim();
+  return t ? t : undefined;
 }
 
 function validateIntroSlides(x: unknown): IntroSlide[] | { error: string } {
@@ -82,7 +83,7 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
     if (typeof imageUrl === "object") return { error: `questions[${i}].${imageUrl.error}` };
     // 出題文は画像があれば省略できる（画像の中に文字が描かれている問題）
     if (qq.prompt !== undefined && typeof qq.prompt !== "string") return { error: `questions[${i}].prompt invalid` };
-    const prompt = typeof qq.prompt === "string" ? qq.prompt : "";
+    const prompt = typeof qq.prompt === "string" ? qq.prompt.trim() : "";
     if (prompt.length === 0 && !imageUrl) return { error: `questions[${i}].prompt is required` };
     if (!Array.isArray(qq.answers) || qq.answers.length === 0 || !qq.answers.every((a) => typeof a === "string" && a.length > 0)) {
       return { error: `questions[${i}].answers must be a non-empty string array` };
