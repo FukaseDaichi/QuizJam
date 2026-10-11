@@ -57,6 +57,27 @@ export function QuestionSlidePreview({ question, index, total, settings, backgro
   );
 }
 
+/** 説明スライド。画像があれば中央に大きく、見出し・本文はその上下に添える。本文は改行を保つ */
+export function IntroSlidePreview({ heading, body, imageUrl, compact = false }: {
+  heading?: string; body?: string; imageUrl?: string; compact?: boolean;
+}) {
+  const empty = !heading && !body && !imageUrl;
+  return (
+    <SlideFrame>
+      <div className="flex h-full flex-col items-center justify-center gap-[2cqw] px-[6cqw] py-[4cqw] text-center">
+        {heading && (
+          <h2 className={`break-words font-black leading-tight ${imageUrl ? "text-[4cqw]" : "text-[6cqw]"}`}>{heading}</h2>
+        )}
+        {imageUrl && <img src={imageUrl} alt="" className="min-h-0 w-auto max-w-full flex-1 rounded-[1.5cqw] object-contain" />}
+        {body && !compact && (
+          <p className={`max-h-full overflow-hidden whitespace-pre-wrap break-words text-left leading-relaxed text-slate-200 ${imageUrl ? "text-[2.2cqw]" : "text-[3cqw]"}`}>{body}</p>
+        )}
+        {empty && <p className="text-[4cqw] text-slate-500">見出し・本文・画像のどれかを入力</p>}
+      </div>
+    </SlideFrame>
+  );
+}
+
 function SlideFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="@container relative aspect-video w-full overflow-hidden rounded-2xl bg-slate-900 text-slate-100 ring-1 ring-slate-700">

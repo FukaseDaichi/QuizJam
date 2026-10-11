@@ -9,7 +9,7 @@ import { AdminGate } from "./AdminGate";
 import { DEFAULT_SETTINGS, resolveSettings } from "../../shared/defaults";
 import { validateQuestionSetInput, type QuestionSetInput } from "../../shared/validateQuestionSet";
 import type { Question, QuestionSet, QuestionSettings } from "../../shared/types";
-import { QuestionSlidePreview, TitleSlidePreview } from "./SlidePreview";
+import { QuestionSlidePreview, TitleSlidePreview } from "../components/Slides";
 import { QuestionInspector, TitleInspector } from "./SlideInspector";
 
 export function QuestionSetEditPage() {
