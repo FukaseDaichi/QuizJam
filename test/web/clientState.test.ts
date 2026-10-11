@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_SETTINGS } from "../../src/shared/defaults";
 import { applyServerMessage, initialClientState, setConnected, type ClientState } from "../../src/web/lib/clientState";
-import type { StateMessage } from "../../src/shared/messages";
+import type { IntroView, StateMessage } from "../../src/shared/messages";
 import { remainingSeconds } from "../../src/web/lib/time";
 
 const T0 = 1_700_000_000_000;
@@ -10,7 +10,7 @@ const baseState: StateMessage = {
   type: "state", role: "player", serverTime: T0 + 500, roomCode: "ABC123", phase: "lobby",
   participants: [{ id: "p1", nickname: "みさき", score: 0, connected: true }],
   leaderboard: [{ participantId: "p1", nickname: "みさき", score: 0, rank: 1 }],
-  question: null, questionResult: null,
+  intro: null, question: null, questionResult: null,
   me: { id: "p1", nickname: "みさき", score: 0, connected: true, status: null },
   questionSetName: null,
   correctCount: 0,
@@ -169,5 +169,40 @@ describe("live settings during a question", () => {
     let s = applyServerMessage(withState(), { type: "questionStarted", question: { ...question, deadlineAt: T0 + 5_000 } }, T0);
     s = applyServerMessage(s, { type: "deadlineSet", deadlineAt: null }, T0);
     expect(s.question?.deadlineAt).toBeNull();
+  });
+});
+
+describe("intro slides", () => {
+  const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "テスト", questionCount: 1, settings: DEFAULT_SETTINGS } };
+
+  it("introStarted sets phase and intro and clears question state", () => {
+    let s = applyServerMessage(withState(), { type: "questionStarted", question: { index: 0, total: 1, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
+    s = applyServerMessage(s, { type: "answerResult", correct: false, correctRank: null, remainingAttempts: 2, points: 0 }, T0);
+    s = applyServerMessage(s, { type: "introStarted", intro }, T0);
+    expect(s.phase).toBe("intro");
+    expect(s.intro).toEqual(intro);
+    expect(s.question).toBeNull();
+    expect(s.questionResult).toBeNull();
+    expect(s.lastAnswerResult).toBeNull();
+    expect(s.finalEntries).toBeNull();
+    expect(s.correctCountThisQuestion).toBe(0);
+  });
+
+  it("introStarted with the title slide tells the client the question set name", () => {
+    const s = applyServerMessage(withState(), { type: "introStarted", intro }, T0);
+    expect(s.questionSetName).toBe("テスト");
+  });
+
+  it("questionStarted clears intro", () => {
+    let s = applyServerMessage(withState(), { type: "introStarted", intro }, T0);
+    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
+    expect(s.intro).toBeNull();
+    expect(s.phase).toBe("question");
+  });
+
+  it("state message carries intro", () => {
+    const s = applyServerMessage(initialClientState, { ...baseState, phase: "intro", intro }, T0);
+    expect(s.phase).toBe("intro");
+    expect(s.intro).toEqual(intro);
   });
 });

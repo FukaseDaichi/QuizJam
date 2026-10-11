@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GameEngine } from "../../src/room/GameEngine";
+import { GameEngine, type EngineState } from "../../src/room/GameEngine";
 import type { QuestionSet } from "../../src/shared/types";
+import type { QuestionView } from "../../src/shared/messages";
 import { DEFAULT_SETTINGS } from "../../src/shared/defaults";
 
 const T0 = 1_700_000_000_000;
@@ -15,6 +16,14 @@ function makeSet(overrides: Partial<QuestionSet["settings"]> = {}): QuestionSet 
       { id: "q2", type: "anagram", prompt: "なばな", answers: ["ばなな"], imageUrl: "/api/images/banana.png" },
     ],
   };
+}
+
+/** タイトルスライドを飛ばして第1問を開く（説明スライドの無いセット用） */
+function startQuestions(e: GameEngine, set: QuestionSet, carryOverScores: boolean, now: number): QuestionView {
+  e.start(set, carryOverScores);
+  const r = e.next(now);
+  if (r.kind !== "question") throw new Error(`expected question, got ${r.kind}`);
+  return r.question;
 }
 
 describe("GameEngine participants", () => {
@@ -50,7 +59,7 @@ describe("GameEngine start", () => {
   });
 
   it("moves to question phase and sets a fixed deadline", () => {
-    const view = e.start(makeSet({ timerMode: "fixed", timerSeconds: 20 }), false, T0);
+    const view = startQuestions(e, makeSet({ timerMode: "fixed", timerSeconds: 20 }), false, T0);
     expect(e.phase).toBe("question");
     expect(view).toEqual({
       index: 0, total: 2, prompt: "ごんり", hint: undefined,
@@ -58,26 +67,26 @@ describe("GameEngine start", () => {
     });
   });
   it("passes the set's slide background to the question view", () => {
-    const view = e.start({ ...makeSet(), slideBackground: "#fbf1dd" }, false, T0);
+    const view = startQuestions(e, { ...makeSet(), slideBackground: "#fbf1dd" }, false, T0);
     expect(view.background).toBe("#fbf1dd");
   });
   it("has no deadline in afterFirstCorrect and none modes", () => {
-    expect(e.start(makeSet({ timerMode: "afterFirstCorrect" }), false, T0).deadlineAt).toBeNull();
+    expect(startQuestions(e, makeSet({ timerMode: "afterFirstCorrect" }), false, T0).deadlineAt).toBeNull();
     const e2 = GameEngine.create("X");
-    expect(e2.start(makeSet({ timerMode: "none" }), false, T0).deadlineAt).toBeNull();
+    expect(startQuestions(e2, makeSet({ timerMode: "none" }), false, T0).deadlineAt).toBeNull();
   });
   it("resets scores unless carryOverScores", () => {
-    e.start(makeSet(), false, T0);
+    startQuestions(e, makeSet(), false, T0);
     e.submitAnswer("p1", "りんご", T0 + 1000);
     expect(e.leaderboard()[0].score).toBe(150);
-    e.start(makeSet(), false, T0 + 60_000);
+    startQuestions(e, makeSet(), false, T0 + 60_000);
     expect(e.leaderboard()[0].score).toBe(0);
     e.submitAnswer("p1", "りんご", T0 + 61_000);
-    e.start(makeSet(), true, T0 + 120_000);
+    startQuestions(e, makeSet(), true, T0 + 120_000);
     expect(e.leaderboard()[0].score).toBe(150);
   });
   it("rejects start with an empty question set", () => {
-    expect(() => e.start({ ...makeSet(), questions: [] }, false, T0)).toThrow();
+    expect(() => startQuestions(e, { ...makeSet(), questions: [] }, false, T0)).toThrow();
   });
 });
 
@@ -96,7 +105,7 @@ describe("GameEngine submitAnswer", () => {
   });
 
   it("awards base points plus rank bonus in server arrival order", () => {
-    e.start(makeSet(), false, T0);
+    startQuestions(e, makeSet(), false, T0);
     expect(e.submitAnswer("p1", "リンゴ", T0 + 100)).toMatchObject({ kind: "correct", correctRank: 1, points: 150 });
     expect(e.submitAnswer("p2", "林檎", T0 + 200)).toMatchObject({ kind: "correct", correctRank: 2, points: 130 });
     expect(e.submitAnswer("p3", "りんご", T0 + 300)).toMatchObject({ kind: "correct", correctRank: 3, points: 110 });
@@ -107,14 +116,14 @@ describe("GameEngine submitAnswer", () => {
   });
 
   it("counts wrong attempts and blocks after maxAttempts", () => {
-    e.start(makeSet({ maxAttempts: 2 }), false, T0);
+    startQuestions(e, makeSet({ maxAttempts: 2 }), false, T0);
     expect(e.submitAnswer("p1", "ごりら", T0 + 1)).toEqual({ kind: "wrong", remainingAttempts: 1, points: 0 });
     expect(e.submitAnswer("p1", "ばなな", T0 + 2)).toEqual({ kind: "wrong", remainingAttempts: 0, points: 0 });
     expect(e.submitAnswer("p1", "りんご", T0 + 3)).toEqual({ kind: "rejected", code: "no_attempts_left" });
   });
 
   it("allows unlimited attempts when maxAttempts is null", () => {
-    e.start(makeSet({ maxAttempts: null }), false, T0);
+    startQuestions(e, makeSet({ maxAttempts: null }), false, T0);
     for (let i = 0; i < 10; i++) {
       expect(e.submitAnswer("p1", "ごりら", T0 + i)).toEqual({ kind: "wrong", remainingAttempts: null, points: 0 });
     }
@@ -122,29 +131,29 @@ describe("GameEngine submitAnswer", () => {
   });
 
   it("applies wrongPenalty", () => {
-    e.start(makeSet({ wrongPenalty: 10 }), false, T0);
+    startQuestions(e, makeSet({ wrongPenalty: 10 }), false, T0);
     expect(e.submitAnswer("p1", "ごりら", T0 + 1)).toEqual({ kind: "wrong", remainingAttempts: 2, points: -10 });
     expect(e.leaderboard().find((x) => x.participantId === "p1")?.score).toBe(-10);
   });
 
   it("rejects a second answer after a correct one", () => {
-    e.start(makeSet(), false, T0);
+    startQuestions(e, makeSet(), false, T0);
     e.submitAnswer("p1", "りんご", T0 + 1);
     expect(e.submitAnswer("p1", "りんご", T0 + 2)).toEqual({ kind: "rejected", code: "already_correct" });
   });
 
   it("rejects answers after the deadline", () => {
-    e.start(makeSet({ timerMode: "fixed", timerSeconds: 10 }), false, T0);
+    startQuestions(e, makeSet({ timerMode: "fixed", timerSeconds: 10 }), false, T0);
     expect(e.submitAnswer("p1", "りんご", T0 + 10_000)).toEqual({ kind: "rejected", code: "deadline_passed" });
   });
 
   it("rejects answers from unknown participants", () => {
-    e.start(makeSet(), false, T0);
+    startQuestions(e, makeSet(), false, T0);
     expect(e.submitAnswer("ghost", "りんご", T0 + 1)).toEqual({ kind: "rejected", code: "forbidden" });
   });
 
   it("sets the deadline only on the first correct answer in afterFirstCorrect mode", () => {
-    e.start(makeSet({ timerMode: "afterFirstCorrect", timerSeconds: 15 }), false, T0);
+    startQuestions(e, makeSet({ timerMode: "afterFirstCorrect", timerSeconds: 15 }), false, T0);
     expect(e.submitAnswer("p1", "ごりら", T0 + 1)).toMatchObject({ kind: "wrong" });
     expect(e.deadlineAt).toBeNull();
     expect(e.submitAnswer("p2", "りんご", T0 + 2)).toMatchObject({
@@ -157,12 +166,12 @@ describe("GameEngine submitAnswer", () => {
   it("uses per-question overrides", () => {
     const set = makeSet();
     set.questions[0].overrides = { basePoints: 10, rankBonus: [] };
-    e.start(set, false, T0);
+    startQuestions(e, set, false, T0);
     expect(e.submitAnswer("p1", "りんご", T0 + 1)).toMatchObject({ points: 10 });
   });
 
   it("reports myStatus, correctCount and allParticipantsDone", () => {
-    e.start(makeSet({ maxAttempts: 1 }), false, T0);
+    startQuestions(e, makeSet({ maxAttempts: 1 }), false, T0);
     expect(e.myStatus("p1")).toEqual({ attemptsUsed: 0, correct: false, correctRank: null });
     e.submitAnswer("p1", "りんご", T0 + 1);
     e.submitAnswer("p2", "ごりら", T0 + 2);
@@ -181,7 +190,7 @@ describe("GameEngine submitAnswer", () => {
   });
 
   it("ignores disconnected participants in allParticipantsDone", () => {
-    e.start(makeSet({ maxAttempts: 1 }), false, T0);
+    startQuestions(e, makeSet({ maxAttempts: 1 }), false, T0);
     e.setConnected("p3", false);
     e.setConnected("p4", false);
     e.submitAnswer("p1", "りんご", T0 + 1);
@@ -194,7 +203,7 @@ describe("GameEngine snapshot", () => {
   it("round-trips through snapshot/fromSnapshot", () => {
     const e = GameEngine.create("ABC123");
     e.addParticipant("p1", "みさき");
-    e.start(makeSet(), false, T0);
+    startQuestions(e, makeSet(), false, T0);
     e.submitAnswer("p1", "りんご", T0 + 1);
     const e2 = GameEngine.fromSnapshot(JSON.parse(JSON.stringify(e.snapshot())));
     expect(e2.snapshot()).toEqual(e.snapshot());
@@ -208,7 +217,7 @@ describe("GameEngine close / next / final", () => {
     e = GameEngine.create("ABC123");
     e.addParticipant("p1", "みさき");
     e.addParticipant("p2", "たろう");
-    e.start(makeSet(), false, T0);
+    startQuestions(e, makeSet(), false, T0);
   });
 
   it("closeQuestion moves to questionResult and lists correct answerers in rank order", () => {
@@ -293,14 +302,14 @@ describe("GameEngine GM live controls", () => {
   describe("settings override", () => {
     it("starts with no override and reports the set's settings once started", () => {
       expect(e.settingsOverride()).toEqual({});
-      e.start(makeSet({ timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 }), false, T0);
+      startQuestions(e, makeSet({ timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 }), false, T0);
       expect(e.settings()).toMatchObject({ timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 });
     });
 
     it("override takes precedence over set settings and per-question overrides", () => {
       const set = makeSet({ timerSeconds: 30 });
       set.questions[1].overrides = { timerSeconds: 10, maxAttempts: 1 };
-      e.start(set, false, T0);
+      startQuestions(e, set, false, T0);
       e.setSettingsOverride({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 20 });
       expect(e.settingsOverride()).toEqual({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 20 });
       expect(e.settings(0)).toMatchObject({ timerSeconds: 5, maxAttempts: null, wrongPenalty: 20 });
@@ -309,12 +318,12 @@ describe("GameEngine GM live controls", () => {
 
     it("override can be set in the lobby and applies when the game starts", () => {
       e.setSettingsOverride({ timerSeconds: 7 });
-      e.start(makeSet({ timerSeconds: 30 }), false, T0);
+      startQuestions(e, makeSet({ timerSeconds: 30 }), false, T0);
       expect(e.deadlineAt).toBe(T0 + 7_000);
     });
 
     it("override applies from the next question, not the running one", () => {
-      e.start(makeSet({ timerSeconds: 30 }), false, T0);
+      startQuestions(e, makeSet({ timerSeconds: 30 }), false, T0);
       e.setSettingsOverride({ timerSeconds: 5 });
       expect(e.deadlineAt).toBe(T0 + 30_000);
       e.closeQuestion(T0 + 1);
@@ -324,7 +333,7 @@ describe("GameEngine GM live controls", () => {
     });
 
     it("override of maxAttempts and wrongPenalty is used when judging answers", () => {
-      e.start(makeSet({ maxAttempts: 3, wrongPenalty: 0 }), false, T0);
+      startQuestions(e, makeSet({ maxAttempts: 3, wrongPenalty: 0 }), false, T0);
       e.setSettingsOverride({ maxAttempts: 1, wrongPenalty: 25 });
       expect(e.submitAnswer("p1", "ちがう", T0 + 1)).toEqual({ kind: "wrong", remainingAttempts: 0, points: -25 });
       expect(e.submitAnswer("p1", "りんご", T0 + 2)).toEqual({ kind: "rejected", code: "no_attempts_left" });
@@ -362,7 +371,7 @@ describe("GameEngine GM live controls", () => {
       expect(e.removeParticipant("nobody")).toBeNull();
     });
     it("drops the removed participant's answers so results and correct count ignore them", () => {
-      e.start(makeSet(), false, T0);
+      startQuestions(e, makeSet(), false, T0);
       e.submitAnswer("p1", "りんご", T0 + 1);
       e.submitAnswer("p2", "りんご", T0 + 2);
       e.removeParticipant("p1");
@@ -371,7 +380,7 @@ describe("GameEngine GM live controls", () => {
       expect(result.results.map((r) => r.participantId)).toEqual(["p2"]);
     });
     it("a removed participant can no longer answer", () => {
-      e.start(makeSet(), false, T0);
+      startQuestions(e, makeSet(), false, T0);
       e.removeParticipant("p1");
       expect(e.submitAnswer("p1", "りんご", T0 + 1)).toEqual({ kind: "rejected", code: "forbidden" });
     });
@@ -393,7 +402,7 @@ describe("GameEngine live settings applied to the running question", () => {
   });
 
   it("switching to fixed during a question without a deadline starts a countdown now", () => {
-    e.start(makeSet({ timerMode: "none", timerSeconds: 60 }), false, T0);
+    startQuestions(e, makeSet({ timerMode: "none", timerSeconds: 60 }), false, T0);
     expect(e.deadlineAt).toBeNull();
     e.setSettingsOverride({ timerMode: "fixed", timerSeconds: 10 });
     expect(e.reconcileDeadline(T0 + 5_000)).toEqual({ changed: true, deadlineAt: T0 + 15_000 });
@@ -401,7 +410,7 @@ describe("GameEngine live settings applied to the running question", () => {
   });
 
   it("switching to none during a question clears the deadline", () => {
-    e.start(makeSet({ timerMode: "fixed", timerSeconds: 30 }), false, T0);
+    startQuestions(e, makeSet({ timerMode: "fixed", timerSeconds: 30 }), false, T0);
     e.setSettingsOverride({ timerMode: "none" });
     expect(e.reconcileDeadline(T0 + 1_000)).toEqual({ changed: true, deadlineAt: null });
     expect(e.deadlineAt).toBeNull();
@@ -409,7 +418,7 @@ describe("GameEngine live settings applied to the running question", () => {
   });
 
   it("switching to afterFirstCorrect starts the countdown only if someone is already correct", () => {
-    e.start(makeSet({ timerMode: "none", timerSeconds: 10 }), false, T0);
+    startQuestions(e, makeSet({ timerMode: "none", timerSeconds: 10 }), false, T0);
     e.setSettingsOverride({ timerMode: "afterFirstCorrect" });
     expect(e.reconcileDeadline(T0 + 1_000)).toEqual({ changed: false, deadlineAt: null });
     // 切り替え後の最初の正解は、通常の afterFirstCorrect と同じく回答時にタイマーを開始する
@@ -418,14 +427,14 @@ describe("GameEngine live settings applied to the running question", () => {
     // 正解者が出てから切り替えた場合も同じく「今」から数える
     const e2 = GameEngine.create("X");
     e2.addParticipant("p1", "a");
-    e2.start(makeSet({ timerMode: "none", timerSeconds: 10 }), false, T0);
+    startQuestions(e2, makeSet({ timerMode: "none", timerSeconds: 10 }), false, T0);
     e2.submitAnswer("p1", "りんご", T0 + 1_000);
     e2.setSettingsOverride({ timerMode: "afterFirstCorrect" });
     expect(e2.reconcileDeadline(T0 + 4_000)).toEqual({ changed: true, deadlineAt: T0 + 14_000 });
   });
 
   it("changing seconds alone leaves a running deadline untouched", () => {
-    e.start(makeSet({ timerMode: "fixed", timerSeconds: 30 }), false, T0);
+    startQuestions(e, makeSet({ timerMode: "fixed", timerSeconds: 30 }), false, T0);
     e.setSettingsOverride({ timerSeconds: 5 });
     expect(e.reconcileDeadline(T0 + 1_000)).toEqual({ changed: false, deadlineAt: T0 + 30_000 });
   });
@@ -433,18 +442,95 @@ describe("GameEngine live settings applied to the running question", () => {
   it("does nothing outside the question phase", () => {
     e.setSettingsOverride({ timerMode: "fixed", timerSeconds: 5 });
     expect(e.reconcileDeadline(T0)).toEqual({ changed: false, deadlineAt: null });
-    e.start(makeSet({ timerMode: "none" }), false, T0);
+    startQuestions(e, makeSet({ timerMode: "none" }), false, T0);
     e.closeQuestion(T0 + 1);
     expect(e.reconcileDeadline(T0 + 2)).toEqual({ changed: false, deadlineAt: T0 + 1 });
   });
 
   it("basePoints and rankBonus override affect new answers, and the result keeps the points actually awarded", () => {
-    e.start(makeSet({ basePoints: 100, rankBonus: [50] }), false, T0);
+    startQuestions(e, makeSet({ basePoints: 100, rankBonus: [50] }), false, T0);
     expect(e.submitAnswer("p1", "りんご", T0 + 1)).toMatchObject({ kind: "correct", points: 150 });
     e.setSettingsOverride({ basePoints: 10, rankBonus: [] });
     expect(e.submitAnswer("p2", "林檎", T0 + 2)).toMatchObject({ kind: "correct", points: 10 });
     const r = e.closeQuestion(T0 + 3);
     expect(r.results.map((x) => [x.participantId, x.points])).toEqual([["p1", 150], ["p2", 10]]);
     expect(e.leaderboard().map((x) => [x.participantId, x.score])).toEqual([["p1", 150], ["p2", 10]]);
+  });
+});
+
+function makeSetWithIntro(): QuestionSet {
+  return {
+    ...makeSet(),
+    coverImageUrl: "/api/images/cover.png",
+    introSlides: [
+      { id: "s1", heading: "ルール", body: "3回まで回答できます" },
+      { id: "s2", imageUrl: "/api/images/rules.png" },
+    ],
+  };
+}
+
+describe("GameEngine intro", () => {
+  let e: GameEngine;
+  beforeEach(() => {
+    e = GameEngine.create("ABC123");
+    e.addParticipant("p1", "みさき");
+  });
+
+  it("start shows the title slide with the effective settings of question 1", () => {
+    e.setSettingsOverride({ maxAttempts: 5 });
+    const intro = e.start(makeSetWithIntro(), false);
+    expect(e.phase).toBe("intro");
+    expect(e.introIndex).toBe(0);
+    expect(intro).toEqual({
+      index: 0, total: 3,
+      slide: { kind: "title", name: "テスト", coverImageUrl: "/api/images/cover.png", questionCount: 2, settings: { ...DEFAULT_SETTINGS, maxAttempts: 5 } },
+    });
+    expect(e.introView()).toEqual(intro);
+    expect(e.currentQuestionView()).toBeNull();
+    expect(e.questionResult()).toBeNull();
+    expect(e.correctCount()).toBe(0);
+    expect(e.myStatus("p1")).toBeNull();
+  });
+
+  it("next walks through the intro slides and then opens question 1", () => {
+    e.start(makeSetWithIntro(), false);
+    expect(e.next(T0)).toEqual({ kind: "intro", intro: { index: 1, total: 3, slide: { kind: "slide", heading: "ルール", body: "3回まで回答できます", imageUrl: undefined } } });
+    expect(e.next(T0)).toMatchObject({ kind: "intro", intro: { index: 2, total: 3, slide: { kind: "slide", imageUrl: "/api/images/rules.png" } } });
+    const q = e.next(T0);
+    expect(q).toMatchObject({ kind: "question", question: { index: 0, prompt: "ごんり", deadlineAt: T0 + 30_000 } });
+    expect(e.phase).toBe("question");
+    expect(e.introView()).toBeNull();
+  });
+
+  it("without intro slides the title is followed directly by question 1", () => {
+    expect(e.start(makeSet(), false).total).toBe(1);
+    expect(e.next(T0).kind).toBe("question");
+  });
+
+  it("rejects answers during intro and keeps scores", () => {
+    e.start(makeSet(), false);
+    expect(e.submitAnswer("p1", "りんご", T0)).toEqual({ kind: "rejected", code: "not_in_question" });
+    expect(e.leaderboard()[0].score).toBe(0);
+  });
+
+  it("allParticipantsDone is false during intro", () => {
+    e.start(makeSet(), false);
+    expect(e.allParticipantsDone()).toBe(false);
+    expect(() => e.closeQuestion(T0)).toThrow();
+  });
+
+  it("endGame from intro returns to lobby and resets the intro index", () => {
+    e.start(makeSetWithIntro(), false);
+    e.next(T0);
+    e.endGame();
+    expect(e.phase).toBe("lobby");
+    expect(e.introIndex).toBe(0);
+    expect(e.introView()).toBeNull();
+  });
+
+  it("restores a snapshot without introIndex as 0", () => {
+    const snap = e.snapshot() as Partial<EngineState>;
+    delete snap.introIndex;
+    expect(GameEngine.fromSnapshot(snap as EngineState).introIndex).toBe(0);
   });
 });

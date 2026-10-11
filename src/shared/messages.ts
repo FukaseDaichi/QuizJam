@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, LiveSettings, Participant, Phase, TimerMode } from "./types";
+import type { LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSettings, TimerMode } from "./types";
 
 // ---- client -> server ----
 export type ClientMessage =
@@ -66,6 +66,17 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 }
 
 // ---- server -> client ----
+/** ゲーム冒頭に GM 画面へ映すスライド。index 0 がタイトル、以降が問題セットの introSlides */
+export type IntroSlideView =
+  | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings }
+  | { kind: "slide"; heading?: string; body?: string; imageUrl?: string };
+
+export interface IntroView {
+  index: number;
+  total: number;          // 1 + introSlides.length
+  slide: IntroSlideView;
+}
+
 export interface QuestionView {
   index: number;
   total: number;
@@ -102,6 +113,7 @@ export interface StateMessage {
   phase: Phase;
   participants: Participant[];
   leaderboard: LeaderboardEntry[];
+  intro: IntroView | null;               // intro フェーズのみ
   question: QuestionView | null;
   questionResult: QuestionResultView | null;
   me: (Participant & { status: MyAnswerStatus | null }) | null;
@@ -128,6 +140,7 @@ export type ServerMessage =
   | { type: "participantRemoved"; participant: Participant }
   | { type: "kicked" }
   | { type: "settingsUpdated"; settings: SettingsView }
+  | { type: "introStarted"; intro: IntroView }
   | { type: "questionStarted"; question: QuestionView }
   | { type: "deadlineSet"; deadlineAt: number | null }
   | { type: "answerResult"; correct: boolean; correctRank: number | null; remainingAttempts: number | null; points: number }

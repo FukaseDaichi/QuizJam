@@ -171,13 +171,14 @@ export class Room extends DurableObject<Env> {
         if (engine.phase !== "lobby" && engine.phase !== "finalResult") return this.sendError(ws, "invalid_state", "開始できる状態ではありません");
         const set = await getQuestionSet(this.env.DB, msg.questionSetId);
         if (!set || set.questions.length === 0) return this.sendError(ws, "question_set_not_found", "問題セットが見つかりません");
-        const question = engine.start(set, msg.carryOverScores, now);
+        const intro = engine.start(set, msg.carryOverScores);
         this.save();
-        this.broadcast({ type: "questionStarted", question });
+        this.broadcast({ type: "introStarted", intro });
         this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
         // 開始で初めて「実際に効く設定」が決まるので配る（GM 管理パネルの表示用）
         this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
-        await this.armDeadline(question.deadlineAt);
+        // intro には締切が無い。第1問に入るときに armDeadline する
+        await this.scheduleCleanup();
         return;
       }
       case "close": {
@@ -186,10 +187,12 @@ export class Room extends DurableObject<Env> {
         return;
       }
       case "next": {
-        if (engine.phase !== "questionResult") return this.sendError(ws, "invalid_state", "次へ進める状態ではありません");
+        if (engine.phase !== "intro" && engine.phase !== "questionResult") return this.sendError(ws, "invalid_state", "次へ進める状態ではありません");
         const r = engine.next(now);
         this.save();
-        if (r.kind === "question") {
+        if (r.kind === "intro") {
+          this.broadcast({ type: "introStarted", intro: r.intro });
+        } else if (r.kind === "question") {
           this.broadcast({ type: "questionStarted", question: r.question });
           // 問題ごとの上書きで効く設定が変わりうる
           this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
@@ -295,6 +298,7 @@ export class Room extends DurableObject<Env> {
       phase: engine.phase,
       participants: engine.participants(),
       leaderboard: engine.leaderboard(),
+      intro: engine.introView(),
       question: engine.currentQuestionView(),
       questionResult: engine.questionResult(),
       me: me ? { ...me, status: engine.myStatus(me.id) } : null,

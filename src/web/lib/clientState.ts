@@ -1,4 +1,4 @@
-import type { ErrorCode, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
+import type { ErrorCode, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
 import type { LeaderboardEntry, Participant, Phase } from "../../shared/types";
 
 export interface ClientState {
@@ -9,6 +9,7 @@ export interface ClientState {
   phase: Phase;
   participants: Participant[];
   leaderboard: LeaderboardEntry[];
+  intro: IntroView | null;
   question: QuestionView | null;
   questionResult: QuestionResultView | null;
   me: (Participant & { status: MyAnswerStatus | null }) | null;
@@ -25,7 +26,7 @@ export interface ClientState {
 
 export const initialClientState: ClientState = {
   connected: false, ready: false, role: null, roomCode: "", phase: "lobby",
-  participants: [], leaderboard: [], question: null, questionResult: null, me: null,
+  participants: [], leaderboard: [], intro: null, question: null, questionResult: null, me: null,
   questionSetName: null, lastAnswerResult: null, popups: [], finalEntries: null, lastError: null, clockOffsetMs: 0,
   correctCountThisQuestion: 0,
   settings: { override: {}, effective: null },
@@ -51,7 +52,7 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
     case "state":
       return {
         ...s, ready: true, role: msg.role, roomCode: msg.roomCode, phase: msg.phase,
-        participants: msg.participants, leaderboard: msg.leaderboard, question: msg.question,
+        participants: msg.participants, leaderboard: msg.leaderboard, intro: msg.intro, question: msg.question,
         questionResult: msg.questionResult, me: msg.me, questionSetName: msg.questionSetName,
         finalEntries: msg.phase === "finalResult" ? msg.leaderboard : null,
         lastAnswerResult: null, clockOffsetMs: msg.serverTime - nowMs,
@@ -71,9 +72,16 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
       const question = s.question && eff ? { ...s.question, maxAttempts: eff.maxAttempts } : s.question;
       return { ...s, settings: msg.settings, question };
     }
+    case "introStarted":
+      return {
+        ...s, phase: "intro", intro: msg.intro, question: null, questionResult: null, lastAnswerResult: null, finalEntries: null,
+        correctCountThisQuestion: 0,
+        // タイトルスライドが企画名を運ぶ。再接続せずに開始を見た接続でも名前が分かる
+        questionSetName: msg.intro.slide.kind === "title" ? msg.intro.slide.name : s.questionSetName,
+      };
     case "questionStarted":
       return {
-        ...s, phase: "question", question: msg.question, questionResult: null, lastAnswerResult: null, finalEntries: null,
+        ...s, phase: "question", intro: null, question: msg.question, questionResult: null, lastAnswerResult: null, finalEntries: null,
         correctCountThisQuestion: 0,
         me: s.me ? { ...s.me, status: { attemptsUsed: 0, correct: false, correctRank: null } } : null,
       };

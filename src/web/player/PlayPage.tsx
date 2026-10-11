@@ -66,8 +66,9 @@ export function PlayPage() {
 
       {!state.ready && <p className="text-center text-slate-500">接続しています…</p>}
 
-      {state.ready && state.phase === "lobby" && (
+      {state.ready && (state.phase === "lobby" || state.phase === "intro") && (
         <Card icon={Users} title="待機中">
+          {state.phase === "intro" && state.questionSetName && <p className="text-brand text-sm font-bold">{state.questionSetName}</p>}
           <p className="text-2xl font-black">まもなく開始します</p>
           <p className="mt-2 text-slate-600">参加者 {state.participants.filter((p) => p.connected).length}名</p>
         </Card>

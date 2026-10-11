@@ -29,3 +29,41 @@ describe("validateQuestionSetInput", () => {
     expect(validateQuestionSetInput({ ...base, slideBackground: "red; x", questions })).toEqual({ error: "slideBackground invalid" });
   });
 });
+
+describe("validateQuestionSetInput introSlides", () => {
+  const questions = [{ prompt: "ごんり", answers: ["りんご"] }];
+
+  it("omits introSlides when not given", () => {
+    const v = validateQuestionSetInput({ ...base, questions });
+    expect("error" in v ? v.error : v.introSlides).toBeUndefined();
+  });
+
+  it("accepts slides with any of heading, body or image and assigns ids", () => {
+    const v = validateQuestionSetInput({ ...base, questions, introSlides: [
+      { heading: "ルール" },
+      { body: "3問です\n早い者勝ち" },
+      { imageUrl: "/api/images/a.png" },
+      { id: "s4", heading: "見出し", body: "本文", imageUrl: "https://example.com/x.png" },
+    ] });
+    expect("error" in v).toBe(false);
+    if ("error" in v) return;
+    expect(v.introSlides).toHaveLength(4);
+    expect(v.introSlides![0]).toMatchObject({ heading: "ルール", body: undefined, imageUrl: undefined });
+    expect(v.introSlides![0].id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(v.introSlides![1].body).toBe("3問です\n早い者勝ち");
+    expect(v.introSlides![3].id).toBe("s4");
+  });
+
+  it("rejects an empty slide", () => {
+    expect(validateQuestionSetInput({ ...base, questions, introSlides: [{ heading: "", body: "" }] })).toEqual({ error: "introSlides[0] is empty" });
+  });
+
+  it("rejects too many slides, long text, bad image URLs and non-arrays", () => {
+    const many = Array.from({ length: 21 }, () => ({ heading: "x" }));
+    expect(validateQuestionSetInput({ ...base, questions, introSlides: many })).toEqual({ error: "introSlides must have at most 20 items" });
+    expect(validateQuestionSetInput({ ...base, questions, introSlides: [{ heading: "x".repeat(101) }] })).toEqual({ error: "introSlides[0].heading invalid" });
+    expect(validateQuestionSetInput({ ...base, questions, introSlides: [{ body: "x".repeat(1001) }] })).toEqual({ error: "introSlides[0].body invalid" });
+    expect(validateQuestionSetInput({ ...base, questions, introSlides: [{ imageUrl: "javascript:alert(1)" }] })).toEqual({ error: "introSlides[0].imageUrl invalid" });
+    expect(validateQuestionSetInput({ ...base, questions, introSlides: "nope" })).toEqual({ error: "introSlides must be an array" });
+  });
+});

@@ -14,6 +14,7 @@ import { CorrectPopup } from "./CorrectPopup";
 import { Confetti } from "./Confetti";
 import { GmControlPanel } from "./GmControlPanel";
 import { isLightColor } from "../lib/color";
+import { IntroSlidePreview, TitleSlidePreview } from "../components/Slides";
 import type { QuestionSetSummary } from "../../shared/types";
 
 export function GmRoomPage() {
@@ -48,6 +49,9 @@ export function GmRoomPage() {
 
   const joinUrl = `${location.origin}/play/${roomCode}`;
   const q = state.question;
+  const intro = state.intro;
+  // ロビーと intro の間は入室が続くので、順位表ではなく参加者一覧を出す
+  const showParticipants = state.phase === "lobby" || state.phase === "intro";
   const connectedCount = state.participants.filter((p) => p.connected).length;
   // 問題スライドの背景色が明るいときは、カード内の文字を濃い色にする
   const light = !!q?.background && isLightColor(q.background);
@@ -93,6 +97,14 @@ export function GmRoomPage() {
             </div>
           )}
 
+          {state.phase === "intro" && intro && (
+            <div key={intro.index} className="qj-pop mx-auto my-auto w-full max-w-5xl">
+              {intro.slide.kind === "title"
+                ? <TitleSlidePreview name={intro.slide.name} coverImageUrl={intro.slide.coverImageUrl} questionCount={intro.slide.questionCount} settings={intro.slide.settings} />
+                : <IntroSlidePreview heading={intro.slide.heading} body={intro.slide.body} imageUrl={intro.slide.imageUrl} />}
+            </div>
+          )}
+
           {(state.phase === "question" || state.phase === "questionResult") && q && (
             <Card tone={light ? "light" : "dark"} className="flex flex-1 flex-col" style={q.background ? { backgroundColor: q.background, borderColor: q.background } : undefined}>
               <div className={`flex items-center justify-between ${light ? "text-slate-500" : "text-slate-400"}`}>
@@ -129,8 +141,8 @@ export function GmRoomPage() {
         </section>
 
         <aside>
-          <Card tone="dark" title={state.phase === "lobby" ? "参加者" : "ランキング"} icon={state.phase === "lobby" ? Users : Crown} className="sticky top-6">
-            {state.phase === "lobby" ? (
+          <Card tone="dark" title={showParticipants ? "参加者" : "ランキング"} icon={showParticipants ? Users : Crown} className="sticky top-6">
+            {showParticipants ? (
               <ul className="space-y-2">
                 {state.participants.map((p) => (
                   <li key={p.id} className={`qj-slide-in rounded-xl bg-slate-700/60 px-3 py-2 text-lg ${p.connected ? "" : "opacity-40"}`}>{p.nickname}{!p.connected && "（切断）"}</li>
@@ -143,10 +155,13 @@ export function GmRoomPage() {
       </div>
 
       <footer className="flex items-center justify-end gap-3 border-t border-slate-800 px-8 py-4">
+        {state.phase === "intro" && intro && (
+          <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{intro.index + 1 >= intro.total ? "第1問へ" : "次へ"}</Button>
+        )}
         {state.phase === "question" && <Button variant="secondary" size="lg" icon={Square} onClick={() => send({ type: "close" })}>締切</Button>}
         {state.phase === "questionResult" && <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{q && q.index + 1 >= q.total ? "最終結果へ" : "次の問題へ"}</Button>}
         {state.phase === "finalResult" && <Button variant="brand" size="lg" icon={RotateCcw} onClick={() => send({ type: "endGame" })}>もう1ゲーム</Button>}
-        {(state.phase === "question" || state.phase === "questionResult") && <Button variant="secondary" size="lg" icon={Home} onClick={() => { if (confirm("ゲームを中断してロビーに戻りますか？")) send({ type: "endGame" }); }}>ロビーへ戻る</Button>}
+        {(state.phase === "intro" || state.phase === "question" || state.phase === "questionResult") && <Button variant="secondary" size="lg" icon={Home} onClick={() => { if (confirm("ゲームを中断してロビーに戻りますか？")) send({ type: "endGame" }); }}>ロビーへ戻る</Button>}
         {state.phase === "lobby" && <Link to="/"><Button variant="secondary" size="lg">トップへ</Button></Link>}
       </footer>
 
