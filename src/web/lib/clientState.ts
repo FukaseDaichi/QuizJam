@@ -1,4 +1,4 @@
-import type { ErrorCode, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
+import type { BuzzerView, ErrorCode, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
 import type { LeaderboardEntry, Participant, Phase } from "../../shared/types";
 
 export interface ClientState {
@@ -22,6 +22,7 @@ export interface ClientState {
   correctCountThisQuestion: number;
   settings: SettingsView;
   kicked: boolean; // GM に退出させられた（参加者のみ）
+  buzzer: BuzzerView | null; // 早押しモードで出題中のみ
 }
 
 export const initialClientState: ClientState = {
@@ -31,6 +32,7 @@ export const initialClientState: ClientState = {
   correctCountThisQuestion: 0,
   settings: { override: {}, effective: null, mode: null },
   kicked: false,
+  buzzer: null,
 };
 
 let popupSeq = 0;
@@ -58,6 +60,7 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
         lastAnswerResult: null, clockOffsetMs: msg.serverTime - nowMs,
         correctCountThisQuestion: msg.correctCount,
         settings: msg.settings,
+        buzzer: msg.buzzer,
       };
     case "participantJoined":
     case "participantLeft":
@@ -75,14 +78,14 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
     case "introStarted":
       return {
         ...s, phase: "intro", intro: msg.intro, question: null, questionResult: null, lastAnswerResult: null, finalEntries: null,
-        correctCountThisQuestion: 0,
+        correctCountThisQuestion: 0, buzzer: null,
         // タイトルスライドが企画名を運ぶ。再接続せずに開始を見た接続でも名前が分かる
         questionSetName: msg.intro.slide.kind === "title" ? msg.intro.slide.name : s.questionSetName,
       };
     case "questionStarted":
       return {
         ...s, phase: "question", intro: null, question: msg.question, questionResult: null, lastAnswerResult: null, finalEntries: null,
-        correctCountThisQuestion: 0,
+        correctCountThisQuestion: 0, buzzer: null,
         me: s.me ? { ...s.me, status: { attemptsUsed: 0, correct: false, correctRank: null } } : null,
       };
     case "deadlineSet":
@@ -110,9 +113,11 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
       };
     }
     case "questionClosed":
-      return { ...s, phase: "questionResult", questionResult: msg.result };
+      return { ...s, phase: "questionResult", questionResult: msg.result, buzzer: null };
     case "finalResult":
-      return { ...s, phase: "finalResult", finalEntries: msg.entries, leaderboard: msg.entries, question: null, questionResult: null };
+      return { ...s, phase: "finalResult", finalEntries: msg.entries, leaderboard: msg.entries, question: null, questionResult: null, buzzer: null };
+    case "buzzerUpdated":
+      return { ...s, buzzer: msg.buzzer };
     case "error":
       return { ...s, lastError: { code: msg.code, message: msg.message, at: nowMs } };
     default:

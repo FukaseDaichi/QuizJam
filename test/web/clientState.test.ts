@@ -215,3 +215,35 @@ describe("unknown server messages", () => {
     expect(applyServerMessage(s, msg, T0)).toBe(s);
   });
 });
+
+describe("buzzer mode", () => {
+  const question = { index: 0, total: 2, mode: "buzzer" as const, prompt: "", deadlineAt: null, maxAttempts: 3 };
+  const buzzer = { status: "reading" as const, readingStartedAt: T0, revealedChars: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [] };
+
+  it("state carries the buzzer view", () => {
+    const s = applyServerMessage(initialClientState, { ...baseState, phase: "question", question, buzzer }, T0);
+    expect(s.buzzer).toEqual(buzzer);
+  });
+
+  it("buzzerUpdated replaces the view; questionStarted and questionClosed clear it", () => {
+    let s = applyServerMessage(withState(), { type: "questionStarted", question }, T0);
+    expect(s.buzzer).toBeNull();
+    s = applyServerMessage(s, { type: "buzzerUpdated", buzzer }, T0);
+    expect(s.buzzer?.status).toBe("reading");
+    s = applyServerMessage(s, { type: "buzzerUpdated", buzzer: { ...buzzer, status: "paused", revealedChars: 7, readingStartedAt: null, queue: [{ participantId: "p1", nickname: "みさき" }] } }, T0);
+    expect(s.buzzer).toMatchObject({ status: "paused", revealedChars: 7 });
+    s = applyServerMessage(s, { type: "questionClosed", result: { answers: ["富士山"], results: [] } }, T0);
+    expect(s.buzzer).toBeNull();
+    s = applyServerMessage(s, { type: "buzzerUpdated", buzzer }, T0);
+    s = applyServerMessage(s, { type: "questionStarted", question: { ...question, index: 1 } }, T0);
+    expect(s.buzzer).toBeNull();
+  });
+
+  it("introStarted and finalResult clear the buzzer view", () => {
+    const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "早押し", questionCount: 1, settings: DEFAULT_SETTINGS, mode: "buzzer" } };
+    let s = applyServerMessage(withState(), { type: "buzzerUpdated", buzzer }, T0);
+    expect(applyServerMessage(s, { type: "introStarted", intro }, T0).buzzer).toBeNull();
+    s = applyServerMessage(s, { type: "finalResult", entries: [] }, T0);
+    expect(s.buzzer).toBeNull();
+  });
+});
