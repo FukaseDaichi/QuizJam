@@ -106,7 +106,7 @@ interface EngineState {
 |---|---|---|---|
 | `startReading` | GM | なし | 読み上げ開始。`question` かつ早押しモードかつ `ready` のときだけ |
 | `buzz` | 参加者 | なし | 早押し |
-| `judge` | GM | `{ correct: boolean }` | 回答中の参加者を判定 |
+| `judge` | GM | `{ participantId, correct: boolean }` | 回答中の参加者を判定。`participantId` が回答中の人（キューの先頭）と違えば `invalid_state`。ボタンの二度押しで次の人まで判定されないため |
 
 ### サーバー → クライアント（追加）
 
@@ -224,10 +224,10 @@ type IntroSlideView =
   - 早押しモードの `submitAnswer` は `not_in_question`
   - 参加者向け `currentQuestionView` は `prompt: ""`
   - `buzzer` の無い旧スナップショットを復元できる
-- `messages`: `startReading` / `buzz` / `judge` の解釈、`judge` の `correct` 欠落は拒否、ライブ設定の `charsPerSecond`
+- `messages`: `startReading` / `buzz` / `judge` の解釈、`judge` の `correct` / `participantId` 欠落は拒否、ライブ設定の `charsPerSecond`
 - `validateQuestionSet`: `mode` の値、`charsPerSecond` の範囲、早押しで問題文必須
 - `clientState`: `buzzerUpdated` の反映、`questionStarted` / `questionClosed` でのクリア
-- `Room`（統合）: GM の `startReading` → 参加者の `buzz` → 全員に `buzzerUpdated` → GM の `judge(true)` → `answerResult`・`someoneCorrect`・`questionClosed`。参加者が受け取る `questionStarted` の `prompt` が空
+- `Room`（統合）: GM の `startReading` → 参加者の `buzz` → 全員に `buzzerUpdated` → GM の `judge(true)` → `answerResult`・`someoneCorrect`・`questionClosed`。参加者が受け取る `questionStarted` の `prompt` が空。不正解の `judge` を同じ `participantId` で二度送ると 2 回目は `invalid_state` で、次の人は減点されない
 - `editorChecks`: 早押しで問題文が空なら該当スライドを指す
 
 ## 設計書への反映

@@ -29,7 +29,7 @@ spec が暗に求めるが、どのタスクのテストも素では触れない
 1. 問題終了後（`questionResult`）に遅れて届いた `buzz` → `not_in_question` で拒否し、キューに入らない（Task 3）
 2. 絵文字・サロゲートペアを含む問題文 → `promptLength` と表示の分割がコードポイント単位で一致し、文字が化けない（Task 1、Task 8）
 3. GM が「回答中」の最中にブラウザを再読み込み → `state.buzzer` にキューと参加者名が入っていて、判定ボタンが復元される（Task 4）
-4. GM が「正解」「不正解」を二度押し → 2 回目は `invalid_state`、点数は二重に入らない（Task 4）
+4. GM が「正解」「不正解」を二度押し → `judge` は判定対象の `participantId` を運び、回答中の人と違えば `invalid_state`。不正解の二度押しで次の人まで減点されない（Task 4）
 5. 回答中ではなく「2番目以降」にいる人をキック → キューから消えるだけで、回答中の人と `status` は変わらない（Task 3）
 
 ---
@@ -43,6 +43,7 @@ spec が暗に求めるが、どのタスクのテストも素では触れない
 - Create: `src/shared/buzzer.ts`
 - Test: `test/shared/buzzer.test.ts`（新規）
 - Test: `test/shared/validateQuestionSet.test.ts`
+- Test: `test/worker/questionSets.test.ts`, `test/web/clientState.test.ts`, `test/room/Room.test.ts`（`charsPerSecond` が既定値で補われるようになるので、設定の完全一致期待値を直すだけ）
 
 **Interfaces:**
 - Produces:
@@ -277,16 +278,24 @@ export function isValidCharsPerSecond(x: unknown): x is number {
   };
 ```
 
-- [ ] **Step 9: テストと型チェックを通す**
+- [ ] **Step 9: 既定値の追加で変わる既存テストの期待値を直す**
 
-Run: `npx vitest run test/shared && npm run typecheck`
-Expected: すべて PASS。typecheck は `charsPerSecond` を欠く `QuestionSettings` リテラルがあれば失敗する。失敗したら、そのリテラルが `DEFAULT_SETTINGS` を spread する形に直す（`test/` 内の `settings: { ...DEFAULT_SETTINGS, ... }` は既にその形なので通常は無い）
+`charsPerSecond` が必須になり、省略時は 6 で補われるので、設定を完全一致で比べている 3 か所を直す。
 
-- [ ] **Step 10: コミット**
+- `test/worker/questionSets.test.ts` の `const input = { … settings: { timerMode: "fixed", timerSeconds: 20, basePoints: 100, rankBonus: [50, 30, 10], wrongPenalty: 0, maxAttempts: 3 }, … }` に `charsPerSecond: 6` を足す（API が補った値と `toEqual` で一致させるため）
+- `test/web/clientState.test.ts` の `const effective = { timerMode: "fixed" as const, timerSeconds: 10, basePoints: 100, rankBonus: [50], wrongPenalty: 0, maxAttempts: null };` に `charsPerSecond: 6` を足す（`LiveSettings` 型を満たすため）
+- `test/room/Room.test.ts` の `expect(upd.settings.effective).toEqual({ timerMode: "fixed", timerSeconds: 5, maxAttempts: null, wrongPenalty: 0, basePoints: 100, rankBonus: [50, 30, 10] });` に `charsPerSecond: 6` を足す
+
+- [ ] **Step 10: テストと型チェックを通す**
+
+Run: `npm test && npm run typecheck`
+Expected: すべて PASS
+
+- [ ] **Step 11: コミット**
 
 ```bash
-git add src/shared/types.ts src/shared/defaults.ts src/shared/validateQuestionSet.ts src/shared/buzzer.ts test/shared/buzzer.test.ts test/shared/validateQuestionSet.test.ts
-git commit -m "feat(shared): question set mode, charsPerSecond and the reveal timeline for buzzer mode"
+git add src/shared/types.ts src/shared/defaults.ts src/shared/validateQuestionSet.ts src/shared/buzzer.ts test/shared/buzzer.test.ts test/shared/validateQuestionSet.test.ts test/worker/questionSets.test.ts test/web/clientState.test.ts test/room/Room.test.ts
+git commit -m "feat(shared): question set mode, charsPerSecond and the reveal timeline for buzzer mode" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -295,13 +304,14 @@ git commit -m "feat(shared): question set mode, charsPerSecond and the reveal ti
 
 **Files:**
 - Modify: `src/shared/messages.ts`
+- Modify: `src/web/lib/clientState.ts`（`initialClientState.settings` に `mode: null` を足す 1 行だけ。reducer の変更は Task 5）
 - Test: `test/shared/messages.test.ts`
 - Test: `test/web/clientState.test.ts`（型を満たすようリテラルを直すだけ）
 
 **Interfaces:**
 - Consumes: `QuestionSetMode`, `BuzzerStatus`, `isValidCharsPerSecond`（Task 1）
 - Produces:
-  - `ClientMessage` に `{ type: "startReading" } | { type: "buzz" } | { type: "judge"; correct: boolean }`
+  - `ClientMessage` に `{ type: "startReading" } | { type: "buzz" } | { type: "judge"; participantId: string; correct: boolean }`（`participantId` は判定対象。回答中の人と違えばサーバーが拒否するので、二度押しが次の人に効かない）
   - `interface BuzzerView { status: BuzzerStatus; readingStartedAt: number | null; revealedChars: number; promptLength: number; charsPerSecond: number; queue: { participantId: string; nickname: string }[]; lockedOut: string[] }`
   - `ServerMessage` に `{ type: "buzzerUpdated"; buzzer: BuzzerView }`
   - `QuestionView.mode: QuestionSetMode`、タイトルスライドビューに `mode: QuestionSetMode`、`StateMessage.buzzer: BuzzerView | null`、`SettingsView.mode: QuestionSetMode | null`
@@ -335,11 +345,12 @@ describe("parseClientMessage buzzer messages", () => {
     expect(parseClientMessage(JSON.stringify({ type: "startReading" }))).toEqual({ type: "startReading" });
     expect(parseClientMessage(JSON.stringify({ type: "buzz" }))).toEqual({ type: "buzz" });
   });
-  it("parses judge only with a boolean correct", () => {
-    expect(parseClientMessage(JSON.stringify({ type: "judge", correct: true }))).toEqual({ type: "judge", correct: true });
-    expect(parseClientMessage(JSON.stringify({ type: "judge", correct: false }))).toEqual({ type: "judge", correct: false });
-    expect(parseClientMessage(JSON.stringify({ type: "judge" }))).toBeNull();
-    expect(parseClientMessage(JSON.stringify({ type: "judge", correct: "yes" }))).toBeNull();
+  it("parses judge only with a boolean correct and a string participantId", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "judge", participantId: "p1", correct: true }))).toEqual({ type: "judge", participantId: "p1", correct: true });
+    expect(parseClientMessage(JSON.stringify({ type: "judge", participantId: "p1", correct: false }))).toEqual({ type: "judge", participantId: "p1", correct: false });
+    expect(parseClientMessage(JSON.stringify({ type: "judge", participantId: "p1" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "judge", correct: true }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "judge", participantId: "p1", correct: "yes" }))).toBeNull();
   });
   it("accepts charsPerSecond in live settings within 1..30 integers", () => {
     expect(parseClientMessage(JSON.stringify({ type: "updateSettings", settings: { charsPerSecond: 8 } }))).toEqual({ type: "updateSettings", settings: { charsPerSecond: 8 } });
@@ -380,7 +391,7 @@ export type ClientMessage =
   // 早押しモード
   | { type: "startReading" }                  // GM: 読み上げ（文字送り）開始
   | { type: "buzz" }                          // 参加者: 早押し
-  | { type: "judge"; correct: boolean };      // GM: 回答中の参加者を判定
+  | { type: "judge"; participantId: string; correct: boolean };   // GM: 回答中の参加者を判定。participantId が回答中の人と違えば拒否
 
 const CLIENT_TYPES = new Set(["answer", "start", "close", "next", "endGame", "updateSettings", "adjustScore", "kick", "startReading", "buzz", "judge"]);
 ```
@@ -394,7 +405,10 @@ const CLIENT_TYPES = new Set(["answer", "start", "close", "next", "endGame", "up
 `parseClientMessage` の `if (t === "kick" …)` の次に追加:
 
 ```ts
-  if (t === "judge" && typeof (obj as { correct?: unknown }).correct !== "boolean") return null;
+  if (t === "judge") {
+    const o = obj as { participantId?: unknown; correct?: unknown };
+    if (typeof o.participantId !== "string" || typeof o.correct !== "boolean") return null;
+  }
 ```
 
 `IntroSlideView` の title に `mode` を足す:
@@ -471,13 +485,16 @@ export interface SettingsView {
 Run: `npx vitest run test/shared/messages.test.ts`
 Expected: PASS（5 tests）
 
-- [ ] **Step 5: 型を満たすよう既存テストのリテラルを直す**
+- [ ] **Step 5: 型を満たすよう既存コードとテストのリテラルを直す**
+
+`src/web/lib/clientState.ts` の `initialClientState` にある `settings: { override: {}, effective: null },` を `settings: { override: {}, effective: null, mode: null },` に変える（これが無いと `src/web` の typecheck が落ちる）。
 
 `test/web/clientState.test.ts`:
 
 - `baseState` の `settings: { override: {}, effective: null },` を `settings: { override: {}, effective: null, mode: null },` に変え、その次の行に `buzzer: null,` を足す
-- 163 行付近の `settings: { override: {}, effective: null }` を `settings: { override: {}, effective: null, mode: null }` に変える
-- 157 行付近の `settings: { override: { maxAttempts: null }, effective }` を `settings: { override: { maxAttempts: null }, effective, mode: "anagram" }` に変える
+- `it("settings come from state and are replaced by settingsUpdated", …)` の中: `expect(s.settings).toEqual({ override: {}, effective: null });` を `… toEqual({ override: {}, effective: null, mode: null });` に、`const settings = { override: { timerSeconds: 5 }, effective: { ...DEFAULT_SETTINGS, timerSeconds: 5 } };` を `const settings = { override: { timerSeconds: 5 }, effective: { ...DEFAULT_SETTINGS, timerSeconds: 5 }, mode: "anagram" as const };` にする
+- `it("settingsUpdated without a running question only stores the settings", …)` の中: 送る `settings: { override: {}, effective: null }` と期待値 `toEqual({ override: {}, effective: null })` の両方に `mode: null` を足す
+- `it("settingsUpdated applies the new maxAttempts to the running question", …)` の中: `settings: { override: { maxAttempts: null }, effective }` を `settings: { override: { maxAttempts: null }, effective, mode: "anagram" }` に変える
 - `questionStarted` の `question:` リテラルと `const question = { … }` すべてに `mode: "anagram" as const,` を足す。sed で一括:
 
 ```bash
@@ -485,7 +502,7 @@ sed -i 's/{ index: \([0-9]*\), total: \([0-9]*\), prompt: /{ index: \1, total: \
 grep -c 'mode: "anagram" as const' test/web/clientState.test.ts
 ```
 
-Expected: 8 以上（`questionStarted` のリテラルがすべて置き換わる）
+Expected: 7（`questionStarted` のリテラル 7 件。`{ ...question }` で派生している 1 件は `const question` から `mode` を継承する）
 
 - `const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "テスト", questionCount: 1, settings: DEFAULT_SETTINGS } };` の `settings: DEFAULT_SETTINGS` の後に `, mode: "anagram"` を足す。同じ形の title リテラルが他にもあれば同様に足す:
 
@@ -493,16 +510,16 @@ Expected: 8 以上（`questionStarted` のリテラルがすべて置き換わ�
 grep -n 'kind: "title"' test/web/clientState.test.ts
 ```
 
-- [ ] **Step 6: 型チェック**
+- [ ] **Step 6: テストと型チェック**
 
-Run: `npm run typecheck`
-Expected: `src/room/GameEngine.ts` と `src/room/Room.ts` が `mode` / `buzzer` を欠くためエラーになる（Task 3・4 で直す）。`test/web/clientState.test.ts` 由来のエラーが無いことだけ確認する。`src/web` の `TitleSlidePreview` 呼び出しなど、`mode` を要求しない箇所はエラーにならない
+Run: `npm test && npm run typecheck`
+Expected: `npm test` は PASS。typecheck は `src/room/GameEngine.ts`（`QuestionView` / タイトルスライドの `mode` 欠落）と `src/room/Room.ts`（`SettingsView.mode` と `StateMessage.buzzer` の欠落）だけがエラーになる（Task 3・4 で直す）。`src/web` と `test/` 由来のエラーが無いことを確認する
 
 - [ ] **Step 7: コミット**
 
 ```bash
-git add src/shared/messages.ts test/shared/messages.test.ts test/web/clientState.test.ts
-git commit -m "feat(shared): buzzer messages, BuzzerView and mode on question/title views"
+git add src/shared/messages.ts src/web/lib/clientState.ts test/shared/messages.test.ts test/web/clientState.test.ts
+git commit -m "feat(shared): buzzer messages, BuzzerView and mode on question/title views" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -545,6 +562,13 @@ Expected: 4
       index: 0, total: 2, mode: "anagram", prompt: "ごんり", hint: undefined,
       deadlineAt: T0 + 20_000, maxAttempts: 3,
     });
+```
+
+- `it("next opens the following question with a fresh deadline and attempts", …)` の `question: { index: 1, total: 2, prompt: "なばな", …` を `question: { index: 1, total: 2, mode: "anagram", prompt: "なばな", …` にする（完全一致なので `mode` が無いと落ちる）
+- intro のテスト（`makeSetWithIntro` を使う `it`）の `slide: { kind: "title", name: "テスト", coverImageUrl: "/api/images/cover.png", questionCount: 2, settings: { ...DEFAULT_SETTINGS, maxAttempts: 5 } }` の末尾に `, mode: "anagram"` を足す。同じ形の `kind: "title"` の完全一致が他にもあれば同様に足す:
+
+```bash
+grep -n 'kind: "title"' test/room/GameEngine.test.ts
 ```
 
 - [ ] **Step 2: 早押しの失敗するテストを書く**
@@ -995,7 +1019,7 @@ Expected: `src/room/Room.ts` だけがエラー（`removeParticipant` の引数�
 
 ```bash
 git add src/room/GameEngine.ts test/room/GameEngine.test.ts
-git commit -m "feat(engine): buzzer mode state, startReading/buzz/judge and role-aware question views"
+git commit -m "feat(engine): buzzer mode state, startReading/buzz/judge and role-aware question views" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1010,9 +1034,14 @@ git commit -m "feat(engine): buzzer mode state, startReading/buzz/judge and role
 - Consumes: Task 3 のメソッド群、Task 2 のメッセージ型
 - Produces: WebSocket プロトコル（`startReading` / `buzz` / `judge` → `buzzerUpdated` / `answerResult` / `someoneCorrect` / `questionClosed`）。`state` に `buzzer` と `settings.mode` が入る
 
-- [ ] **Step 1: 失敗する統合テストを書く**
+- [ ] **Step 1: 既存テストの期待値を `SettingsView.mode` に合わせ、失敗する統合テストを書く**
 
-`test/room/Room.test.ts` の末尾に追加:
+`test/room/Room.test.ts` の `it("updateSettings overrides the set from the next question and is included in state", …)` の中:
+
+- `expect(st0.settings).toEqual({ override: {}, effective: null });` を `… toEqual({ override: {}, effective: null, mode: null });` にする
+- `expect(atStart.settings).toEqual({ override: {}, effective: { ...DEFAULT_SETTINGS, timerMode: "fixed", timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 } });` を `… toEqual({ override: {}, effective: { … }, mode: "anagram" });` にする（`effective` の中身はそのまま）
+
+末尾に追加:
 
 ```ts
 describe("Room DO buzzer mode", () => {
@@ -1077,7 +1106,7 @@ describe("Room DO buzzer mode", () => {
     c1.send({ type: "buzz" });
     expect((await c1.waitFor("error")).code).toBe("already_buzzed");
 
-    gm.send({ type: "judge", correct: false });
+    gm.send({ type: "judge", participantId: p2.participantId, correct: false });
     const wrong = await c2.waitFor("answerResult");
     expect(wrong).toEqual({ type: "answerResult", correct: false, correctRank: null, remainingAttempts: 0, points: -20 });
     const nextUp = await gm.waitFor("buzzerUpdated", (m) => m.buzzer.lockedOut.length === 1);
@@ -1086,15 +1115,19 @@ describe("Room DO buzzer mode", () => {
     c2.send({ type: "buzz" });
     expect((await c2.waitFor("error")).code).toBe("locked_out");
 
-    gm.send({ type: "judge", correct: true });
+    // 「不正解」の二度押し: 判定対象が回答中の人（p1）と違うので拒否され、p1 は減点されない
+    gm.send({ type: "judge", participantId: p2.participantId, correct: false });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+
+    gm.send({ type: "judge", participantId: p1.participantId, correct: true });
     expect(await c1.waitFor("answerResult")).toEqual({ type: "answerResult", correct: true, correctRank: 1, remainingAttempts: null, points: 100 });
     expect(await gm.waitFor("someoneCorrect")).toMatchObject({ nickname: "みさき", correctRank: 1, points: 100 });
     const closed = await c2.waitFor("questionClosed");
     expect(closed.result.answers).toEqual(["富士山"]);
     expect(closed.result.results).toEqual([{ participantId: p1.participantId, nickname: "みさき", correctRank: 1, points: 100 }]);
 
-    // 二度押し: すでに閉じているので invalid_state、点数は変わらない
-    gm.send({ type: "judge", correct: true });
+    // 「正解」の二度押し: すでに閉じているので invalid_state、点数は変わらない
+    gm.send({ type: "judge", participantId: p1.participantId, correct: true });
     expect((await gm.waitFor("error")).code).toBe("invalid_state");
     const gm2 = await connect("BUZZ02", "gm-token");
     const st = await gm2.waitFor("state");
@@ -1107,11 +1140,11 @@ describe("Room DO buzzer mode", () => {
     const { gm, c1 } = await setup("BUZZ03");
     c1.send({ type: "startReading" });
     expect((await c1.waitFor("error")).code).toBe("forbidden");
-    c1.send({ type: "judge", correct: true });
+    c1.send({ type: "judge", participantId: "x", correct: true });
     expect((await c1.waitFor("error")).code).toBe("forbidden");
     gm.send({ type: "buzz" });
     expect((await gm.waitFor("error")).code).toBe("forbidden");
-    gm.send({ type: "judge", correct: true });
+    gm.send({ type: "judge", participantId: "x", correct: true });
     expect((await gm.waitFor("error")).code).toBe("invalid_state");
     gm.send({ type: "startReading" });
     await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
@@ -1135,14 +1168,14 @@ describe("Room DO buzzer mode", () => {
   });
 
   it("closes automatically when every connected participant is locked out", async () => {
-    const { gm, c1, c2 } = await setup("BUZZ05");
+    const { gm, p1, p2, c1, c2 } = await setup("BUZZ05");
     gm.send({ type: "startReading" });
     await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
     c1.send({ type: "buzz" }); await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 1);
-    gm.send({ type: "judge", correct: false });
+    gm.send({ type: "judge", participantId: p1.participantId, correct: false });
     await gm.waitFor("buzzerUpdated", (m) => m.buzzer.lockedOut.length === 1);
     c2.send({ type: "buzz" }); await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 1);
-    gm.send({ type: "judge", correct: false });
+    gm.send({ type: "judge", participantId: p2.participantId, correct: false });
     const closed = await gm.waitFor("questionClosed");
     expect(closed.result.results).toEqual([]);
   });
@@ -1205,6 +1238,8 @@ Expected: FAIL（`bad_message` が返る、`buzzerUpdated` が来ない）
       case "judge": {
         const view = engine.buzzerView();
         if (!view || view.status !== "paused" || view.queue.length === 0) return this.sendError(ws, "invalid_state", "回答中の参加者がいません");
+        // 判定対象が回答中の人と違う（二度押しで次の人に回った後など）なら何もしない
+        if (view.queue[0].participantId !== msg.participantId) return this.sendError(ws, "invalid_state", "回答中の参加者が変わりました");
         const outcome = engine.judge(msg.correct, now);
         this.save();
         const answerer = engine.getParticipant(outcome.participantId);
@@ -1322,13 +1357,13 @@ import { parseClientMessage, type ClientMessage, type QuestionResultView, type S
 - [ ] **Step 4: テストと型チェックを通す**
 
 Run: `npx vitest run test/room && npm run typecheck`
-Expected: すべて PASS。typecheck は `src/web` 側で `SettingsView.mode` / `StateMessage.buzzer` 由来のエラーが出ることがある（`clientState.ts` の `initialClientState.settings` に `mode` が無い）。出たら Task 5 で直すので、`src/room` に残るエラーが無いことだけ確認する
+Expected: すべて PASS。typecheck もここで通る（`initialClientState.settings.mode` は Task 2 で足してある。`StateMessage.buzzer` は reducer が受け取るだけで `ClientState` にはまだ無いが、型エラーにはならない）
 
 - [ ] **Step 5: コミット**
 
 ```bash
 git add src/room/Room.ts test/room/Room.test.ts
-git commit -m "feat(room): relay buzzer messages, send prompts only to the GM and broadcast buzzerUpdated"
+git commit -m "feat(room): relay buzzer messages, send prompts only to the GM and broadcast buzzerUpdated" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1399,7 +1434,7 @@ import type { BuzzerView, ErrorCode, IntroView, MyAnswerStatus, QuestionResultVi
   buzzer: BuzzerView | null; // 早押しモードで出題中のみ
 ```
 
-`initialClientState` の `settings: { override: {}, effective: null },` を `settings: { override: {}, effective: null, mode: null },` にし、`kicked: false,` の次に `buzzer: null,` を足す。
+`initialClientState` の `kicked: false,` の次に `buzzer: null,` を足す（`settings.mode` は Task 2 で足してある）。
 
 reducer:
 
@@ -1418,13 +1453,13 @@ reducer:
 - [ ] **Step 4: テストと型チェックを通す**
 
 Run: `npx vitest run test/web && npm run typecheck`
-Expected: PASS。typecheck もここで全体が通る（通らなければエラー箇所を直す。想定されるのは `src/web/gm/GmRoomPage.tsx` などではなく、`SettingsView` を組み立てている箇所のみ）
+Expected: PASS
 
 - [ ] **Step 5: コミット**
 
 ```bash
 git add src/web/lib/clientState.ts test/web/clientState.test.ts
-git commit -m "feat(web): track the buzzer view in client state"
+git commit -m "feat(web): track the buzzer view in client state" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1599,7 +1634,7 @@ Expected: PASS
 
 ```bash
 git add src/web/lib/labels.ts src/web/lib/slideText.ts src/web/components/Slides.tsx src/web/gm/GmRoomPage.tsx test/web/slideText.test.ts
-git commit -m "feat(web): buzzer-aware title and question slides, mode labels and prompt sizing"
+git commit -m "feat(web): buzzer-aware title and question slides, mode labels and prompt sizing" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1866,7 +1901,7 @@ Expected: PASS
 
 ```bash
 git add src/web/lib/editorChecks.ts src/web/admin/SlideInspector.tsx src/web/admin/QuestionSetEditPage.tsx test/web/editorChecks.test.ts
-git commit -m "feat(admin): choose the question set mode and edit buzzer questions"
+git commit -m "feat(admin): choose the question set mode and edit buzzer questions" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1960,7 +1995,8 @@ export function BuzzerQuestion({ question, buzzer, clockOffsetMs, light, imageHe
       </div>
       {answering && (
         <div className={`qj-slide-in rounded-2xl p-5 text-center ${light ? "bg-white/70" : "bg-slate-700/60"}`} aria-live="assertive">
-          <p className="text-brand inline-flex items-center gap-3 text-5xl font-black"><Mic size={40} aria-hidden />{answering.nickname}さん 回答中</p>
+          {/* text-brand は color: transparent で文字をグラデーション化するので、currentColor を使う Lucide には付けない */}
+          <p className="inline-flex items-center gap-3 text-5xl font-black"><Mic size={40} className="text-purple-500" aria-hidden /><span className="text-brand">{answering.nickname}さん 回答中</span></p>
           {waiting.length > 0 && <p className={`mt-3 text-xl ${muted}`}>次: {waiting.map((w) => w.nickname).join(" → ")}</p>}
         </div>
       )}
@@ -2028,8 +2064,8 @@ import { buzzerScreenPromptSizeClass } from "../lib/slideText";
         )}
         {state.phase === "question" && buzzerMode && buzzer?.status === "paused" && (
           <>
-            <Button variant="success" size="lg" icon={Check} onClick={() => send({ type: "judge", correct: true })}>正解</Button>
-            <Button variant="danger" size="lg" icon={X} onClick={() => send({ type: "judge", correct: false })}>不正解</Button>
+            <Button variant="success" size="lg" icon={Check} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: true })}>正解</Button>
+            <Button variant="danger" size="lg" icon={X} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: false })}>不正解</Button>
           </>
         )}
         {state.phase === "question" && <Button variant="secondary" size="lg" icon={Square} onClick={() => send({ type: "close" })}>締切</Button>}
@@ -2091,7 +2127,7 @@ Expected: PASS
 
 ```bash
 git add src/web/lib/useRevealedCount.ts src/web/gm/BuzzerQuestion.tsx src/web/gm/GmRoomPage.tsx src/web/gm/GmControlPanel.tsx src/web/components/Button.tsx
-git commit -m "feat(gm): reveal the buzzer prompt character by character and judge answers"
+git commit -m "feat(gm): reveal the buzzer prompt character by character and judge answers" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2150,7 +2186,8 @@ export function BuzzerPanel({ question, buzzer, meId, status, lastPoints, shake,
   else if (lockedOut) caption = <p className="inline-flex items-center gap-1 text-xl font-bold text-red-600"><X size={20} aria-hidden />不正解… この問題はもう押せません</p>;
   else if (position === 1) caption = (
     <div className="qj-pop text-center">
-      <Mic size={48} className="text-brand mx-auto" aria-hidden />
+      {/* text-brand は color: transparent なので Lucide には付けない（線が消える） */}
+      <Mic size={48} className="mx-auto text-purple-500" aria-hidden />
       <p className="text-brand mt-2 text-4xl font-black">あなたの番！</p>
       <p className="mt-1 text-lg font-bold text-slate-700">口頭で答えてください</p>
     </div>
@@ -2207,6 +2244,24 @@ import { BuzzerPanel } from "./BuzzerPanel";
 
 `<main className="flex min-h-full flex-col gap-4 …">` はそのまま。`BuzzerPanel` の `flex-1` で縦に広がる。
 
+早押しの正解は `answerResult` の直後に `questionClosed` が届いて問題結果画面に切り替わるので、`BuzzerPanel` の「正解！」はほぼ一瞬しか見えない。問題結果画面に加点を出す。`{state.ready && state.phase === "questionResult" && state.questionResult && ( <Card className="text-center"> …` の中の
+
+```tsx
+          <p className="mt-4 inline-flex items-center gap-1 text-lg">
+            {status?.correct
+              ? <><Check size={20} className="text-green-600" aria-hidden /><b className="text-green-700">正解しました</b></>
+              : <><X size={20} className="text-red-500" aria-hidden /><b className="text-red-600">不正解でした</b></>}
+          </p>
+```
+
+の直後に追加する（アナグラムでも正解した問題では加点が出るようになる。`questionClosed` は `lastAnswerResult` を消さない）:
+
+```tsx
+          {status?.correct && state.lastAnswerResult?.correct && (
+            <p className="qj-pop text-2xl font-black text-green-700">+{state.lastAnswerResult.points}点</p>
+          )}
+```
+
 - [ ] **Step 3: 型チェックとブラウザ確認**
 
 Run: `npm run typecheck && npm test`
@@ -2218,7 +2273,7 @@ Expected: PASS
 2. GM が「読み上げ開始」→ ボタンが有効になる。参加者 A が押すと GM の文字送りが止まり、「Aさん 回答中」。A の画面は「あなたの番！」
 3. 参加者 B が押すと B の画面は「2番目に押しました。Aさんの回答を待っています」。GM の「次: B」
 4. GM が「不正解」→ A は「不正解… この問題はもう押せません」で揺れ、B が「あなたの番！」。GM の順位表で A が減点
-5. GM が「正解」→ B に「正解！ +100点」、GM に紙吹雪とポップアップ、問題結果に B が 1 位で出る
+5. GM が「正解」→ B の問題結果画面に「正解しました」と「+100点」、GM に紙吹雪とポップアップ、問題結果に B が 1 位で出る
 6. 「次の問題へ」→ また「読み上げ待ち」から。読み上げ中に誰も押さないまま全文が出たら「読み上げ終了・早押し待ち」。その後に押しても止まる（既に全文）
 7. 参加者タブをリロードしても同じ状態（キューの位置・押せない状態）に戻る
 
@@ -2226,7 +2281,7 @@ Expected: PASS
 
 ```bash
 git add src/web/player/BuzzerPanel.tsx src/web/player/PlayPage.tsx
-git commit -m "feat(player): big buzzer button with queue and lock-out states"
+git commit -m "feat(player): big buzzer button with queue and lock-out states" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2351,7 +2406,7 @@ git commit -m "feat(player): big buzzer button with queue and lock-out states"
 git rm docs/superpowers/specs/2026-10-13-buzzer-mode-design.md docs/superpowers/plans/2026-10-13-buzzer-mode.md
 npm run typecheck && npm test
 git add docs README.md
-git commit -m "docs: describe buzzer mode and distill the design into the design docs"
+git commit -m "docs: describe buzzer mode and distill the design into the design docs" -m "Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
