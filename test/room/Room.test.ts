@@ -288,7 +288,7 @@ describe("Room DO GM live controls", () => {
     await initRoom("LIVE02");
     const gm = await connect("LIVE02", "gm-token");
     const st0 = await gm.waitFor("state");
-    expect(st0.settings).toEqual({ override: {}, effective: null });
+    expect(st0.settings).toEqual({ override: {}, effective: null, mode: null });
     const p1 = await join("LIVE02", "みさき");
     const c1 = await connect("LIVE02", p1.participantToken);
     await c1.waitFor("state");
@@ -298,7 +298,7 @@ describe("Room DO GM live controls", () => {
     const startedAt = q0.question.deadlineAt! - 30_000;
     // 開始時に実際に効く設定が配られる
     const atStart = await gm.waitFor("settingsUpdated");
-    expect(atStart.settings).toEqual({ override: {}, effective: { ...DEFAULT_SETTINGS, timerMode: "fixed", timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 } });
+    expect(atStart.settings).toEqual({ override: {}, effective: { ...DEFAULT_SETTINGS, timerMode: "fixed", timerSeconds: 30, maxAttempts: 3, wrongPenalty: 0 }, mode: "anagram" });
     await c1.waitFor("settingsUpdated");
 
     gm.send({ type: "updateSettings", settings: { timerSeconds: 5, maxAttempts: null } });
@@ -558,5 +558,165 @@ describe("Room DO intro slides", () => {
     expect(title.intro.slide.kind).toBe("title");
     const lb = await gm.waitFor("leaderboard", (m) => m.entries[0]?.nickname === "みさき");
     expect(lb.entries[0].score).toBe(150);
+  });
+});
+
+describe("Room DO buzzer mode", () => {
+  const PROMPT = "日本で一番高い山は何でしょう？";
+  async function seedBuzzerSet() {
+    return createQuestionSet(testEnv.DB, {
+      name: "早押し", mode: "buzzer",
+      settings: { ...DEFAULT_SETTINGS, timerMode: "fixed", timerSeconds: 1, charsPerSecond: 5, wrongPenalty: 20 },
+      questions: [
+        { id: "b1", type: "anagram", prompt: PROMPT, answers: ["富士山"], hint: "静岡" },
+        { id: "b2", type: "anagram", prompt: "二番目は？", answers: ["北岳"] },
+      ],
+    });
+  }
+  async function setup(code: string) {
+    const set = await seedBuzzerSet();
+    await initRoom(code);
+    const gm = await connect(code, "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join(code, "みさき");
+    const p2 = await join(code, "たろう");
+    const c1 = await connect(code, p1.participantToken);
+    const c2 = await connect(code, p2.participantToken);
+    await c1.waitFor("state"); await c2.waitFor("state");
+    await startGame(gm, set.id);
+    const qsGm = await gm.waitFor("questionStarted");
+    const qs1 = await c1.waitFor("questionStarted");
+    await c2.waitFor("questionStarted");
+    return { set, gm, p1, p2, c1, c2, qsGm, qs1 };
+  }
+
+  it("sends the prompt only to the GM, starts ready without a deadline, and the alarm is the cleanup", async () => {
+    const { gm, c1, qsGm, qs1 } = await setup("BUZZ01");
+    expect(qsGm.question).toMatchObject({ mode: "buzzer", prompt: PROMPT, hint: "静岡", deadlineAt: null });
+    expect(qs1.question).toMatchObject({ mode: "buzzer", prompt: "", deadlineAt: null });
+    expect(qs1.question.hint).toBeUndefined();
+    const bz = await c1.waitFor("buzzerUpdated");
+    expect(bz.buzzer).toMatchObject({ status: "ready", promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [] });
+    await gm.waitFor("buzzerUpdated");
+    expect((await gm.waitFor("settingsUpdated")).settings.mode).toBe("buzzer");
+    // 締切アラームではなく 24h の cleanup なので、発火するとルームが消える
+    expect(await runDurableObjectAlarm(stubFor("BUZZ01"))).toBe(true);
+    expect((await stubFor("BUZZ01").fetch("http://room/exists")).status).toBe(404);
+  });
+
+  it("runs a buzzer question: startReading, buzz, wrong, next answerer, correct, closed", async () => {
+    const { gm, p1, p2, c1, c2 } = await setup("BUZZ02");
+    c1.send({ type: "buzz" });
+    expect((await c1.waitFor("error")).code).toBe("not_reading");
+    c1.send({ type: "answer", text: "富士山" });
+    expect((await c1.waitFor("error")).code).toBe("not_in_question");
+
+    gm.send({ type: "startReading" });
+    const reading = await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    expect(reading.buzzer.readingStartedAt).not.toBeNull();
+
+    c2.send({ type: "buzz" });
+    const paused = await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "paused");
+    expect(paused.buzzer.queue).toEqual([{ participantId: p2.participantId, nickname: "たろう" }]);
+    c1.send({ type: "buzz" });
+    await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 2);
+    c1.send({ type: "buzz" });
+    expect((await c1.waitFor("error")).code).toBe("already_buzzed");
+
+    gm.send({ type: "judge", participantId: p2.participantId, correct: false });
+    const wrong = await c2.waitFor("answerResult");
+    expect(wrong).toEqual({ type: "answerResult", correct: false, correctRank: null, remainingAttempts: 0, points: -20 });
+    const nextUp = await gm.waitFor("buzzerUpdated", (m) => m.buzzer.lockedOut.length === 1);
+    expect(nextUp.buzzer).toMatchObject({ status: "paused", queue: [{ participantId: p1.participantId, nickname: "みさき" }], lockedOut: [p2.participantId] });
+    expect((await gm.waitFor("leaderboard", (m) => m.entries.some((e) => e.score < 0))).entries.find((e) => e.participantId === p2.participantId)?.score).toBe(-20);
+    c2.send({ type: "buzz" });
+    expect((await c2.waitFor("error")).code).toBe("locked_out");
+
+    // 「不正解」の二度押し: 判定対象が回答中の人（p1）と違うので拒否され、p1 は減点されない
+    gm.send({ type: "judge", participantId: p2.participantId, correct: false });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+
+    gm.send({ type: "judge", participantId: p1.participantId, correct: true });
+    expect(await c1.waitFor("answerResult")).toEqual({ type: "answerResult", correct: true, correctRank: 1, remainingAttempts: null, points: 100 });
+    expect(await gm.waitFor("someoneCorrect")).toMatchObject({ nickname: "みさき", correctRank: 1, points: 100 });
+    const closed = await c2.waitFor("questionClosed");
+    expect(closed.result.answers).toEqual(["富士山"]);
+    expect(closed.result.results).toEqual([{ participantId: p1.participantId, nickname: "みさき", correctRank: 1, points: 100 }]);
+
+    // 「正解」の二度押し: すでに閉じているので invalid_state、点数は変わらない
+    gm.send({ type: "judge", participantId: p1.participantId, correct: true });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+    const gm2 = await connect("BUZZ02", "gm-token");
+    const st = await gm2.waitFor("state");
+    expect(st.phase).toBe("questionResult");
+    expect(st.buzzer).toBeNull();
+    expect(st.leaderboard.find((e) => e.participantId === p1.participantId)?.score).toBe(100);
+  });
+
+  it("rejects startReading/judge from players and buzz from the GM, and startReading twice", async () => {
+    const { gm, c1 } = await setup("BUZZ03");
+    c1.send({ type: "startReading" });
+    expect((await c1.waitFor("error")).code).toBe("forbidden");
+    c1.send({ type: "judge", participantId: "x", correct: true });
+    expect((await c1.waitFor("error")).code).toBe("forbidden");
+    gm.send({ type: "buzz" });
+    expect((await gm.waitFor("error")).code).toBe("forbidden");
+    gm.send({ type: "judge", participantId: "x", correct: true });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+    gm.send({ type: "startReading" });
+    await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    gm.send({ type: "startReading" });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+  });
+
+  it("a GM reconnecting mid-answer gets the queue with nicknames in state", async () => {
+    const { gm, p2, c2 } = await setup("BUZZ04");
+    gm.send({ type: "startReading" });
+    await c2.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c2.send({ type: "buzz" });
+    await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "paused");
+    const gm2 = await connect("BUZZ04", "gm-token");
+    const st = await gm2.waitFor("state");
+    expect(st.question?.prompt).toBe(PROMPT);
+    expect(st.buzzer).toMatchObject({ status: "paused", queue: [{ participantId: p2.participantId, nickname: "たろう" }] });
+    // 参加者の再接続では問題文は空のまま
+    const c2b = await connect("BUZZ04", (await join("BUZZ04", "ゆい")).participantToken);
+    expect((await c2b.waitFor("state")).question?.prompt).toBe("");
+  });
+
+  it("closes automatically when every connected participant is locked out", async () => {
+    const { gm, p1, p2, c1, c2 } = await setup("BUZZ05");
+    gm.send({ type: "startReading" });
+    await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c1.send({ type: "buzz" }); await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 1);
+    gm.send({ type: "judge", participantId: p1.participantId, correct: false });
+    await gm.waitFor("buzzerUpdated", (m) => m.buzzer.lockedOut.length === 1);
+    c2.send({ type: "buzz" }); await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 1);
+    gm.send({ type: "judge", participantId: p2.participantId, correct: false });
+    const closed = await gm.waitFor("questionClosed");
+    expect(closed.result.results).toEqual([]);
+  });
+
+  it("kicking the answerer passes the turn and broadcasts buzzerUpdated", async () => {
+    const { gm, p1, p2, c1, c2 } = await setup("BUZZ06");
+    gm.send({ type: "startReading" });
+    await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c1.send({ type: "buzz" }); await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 1);
+    c2.send({ type: "buzz" }); await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 2);
+    gm.send({ type: "kick", participantId: p1.participantId });
+    await gm.waitFor("participantRemoved");
+    const after = await gm.waitFor("buzzerUpdated", (m) => m.buzzer.queue.length === 1);
+    expect(after.buzzer.queue[0].participantId).toBe(p2.participantId);
+  });
+
+  it("changing charsPerSecond mid-reading rebases the segment and broadcasts buzzerUpdated", async () => {
+    const { gm, c1 } = await setup("BUZZ07");
+    gm.send({ type: "startReading" });
+    const reading = await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    gm.send({ type: "updateSettings", settings: { charsPerSecond: 20 } });
+    const rebased = await c1.waitFor("buzzerUpdated", (m) => m.buzzer.charsPerSecond === 20);
+    expect(rebased.buzzer.status).toBe("reading");
+    expect(rebased.buzzer.readingStartedAt!).toBeGreaterThanOrEqual(reading.buzzer.readingStartedAt!);
+    expect((await gm.waitFor("settingsUpdated", (m) => m.settings.override.charsPerSecond === 20)).settings.effective?.charsPerSecond).toBe(20);
   });
 });

@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../worker/env";
 import { GameEngine, type EngineState } from "./GameEngine";
-import { parseClientMessage, type ClientMessage, type ServerMessage, type StateMessage, type SettingsView, type ErrorCode } from "../shared/messages";
+import { parseClientMessage, type ClientMessage, type QuestionResultView, type ServerMessage, type StateMessage, type SettingsView, type ErrorCode } from "../shared/messages";
 import { getQuestionSet } from "../worker/questionSets";
 import type { LiveSettings } from "../shared/types";
 
@@ -164,6 +164,15 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
+    if (msg.type === "buzz") {
+      if (attachment.role !== "player") return this.sendError(ws, "forbidden", "GMは早押しできません");
+      const outcome = engine.buzz(attachment.participantId, now);
+      if (outcome.kind === "rejected") return this.sendError(ws, outcome.code, this.errorText(outcome.code));
+      this.save();
+      this.broadcastBuzzer();
+      return;
+    }
+
     if (attachment.role !== "gm") return this.sendError(ws, "forbidden", "GMのみ操作できます");
 
     switch (msg.type) {
@@ -193,9 +202,10 @@ export class Room extends DurableObject<Env> {
         if (r.kind === "intro") {
           this.broadcast({ type: "introStarted", intro: r.intro });
         } else if (r.kind === "question") {
-          this.broadcast({ type: "questionStarted", question: r.question });
+          this.broadcastQuestionStarted();
           // 問題ごとの上書きで効く設定が変わりうる
           this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
+          this.broadcastBuzzer();
           await this.armDeadline(r.question.deadlineAt);
         } else {
           this.broadcast({ type: "finalResult", entries: r.entries });
@@ -211,6 +221,8 @@ export class Room extends DurableObject<Env> {
         return;
       }
       case "updateSettings": {
+        // 早押しの読み上げ中なら起点を取り直してから速さを変え、表示済みの位置が飛ばないようにする
+        engine.rebaseReading(now);
         engine.setSettingsOverride(msg.settings);
         // 出題中ならタイマーモードの変更を今の問題の締切に反映し、アラームを張り直す
         const dl = engine.reconcileDeadline(now);
@@ -220,6 +232,7 @@ export class Room extends DurableObject<Env> {
           await this.armDeadline(dl.deadlineAt);
         }
         this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
+        this.broadcastBuzzer();
         return;
       }
       case "adjustScore": {
@@ -229,7 +242,7 @@ export class Room extends DurableObject<Env> {
         return;
       }
       case "kick": {
-        const removed = engine.removeParticipant(msg.participantId);
+        const removed = engine.removeParticipant(msg.participantId, now);
         if (!removed) return this.sendError(ws, "participant_not_found", this.errorText("participant_not_found"));
         this.ctx.storage.sql.exec("DELETE FROM tokens WHERE participant_id = ?", removed.id);
         this.save();
@@ -239,6 +252,34 @@ export class Room extends DurableObject<Env> {
         }
         this.broadcast({ type: "participantRemoved", participant: removed });
         this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
+        this.broadcastBuzzer();
+        if (engine.allParticipantsDone()) await this.closeQuestion(now);
+        return;
+      }
+      case "startReading": {
+        if (engine.buzzerView()?.status !== "ready") return this.sendError(ws, "invalid_state", "読み上げを開始できる状態ではありません");
+        engine.startReading(now);
+        this.save();
+        this.broadcastBuzzer();
+        return;
+      }
+      case "judge": {
+        const view = engine.buzzerView();
+        if (!view || view.status !== "paused" || view.queue.length === 0) return this.sendError(ws, "invalid_state", "回答中の参加者がいません");
+        // 判定対象が回答中の人と違う（二度押しで次の人に回った後など）なら何もしない
+        if (view.queue[0].participantId !== msg.participantId) return this.sendError(ws, "invalid_state", "回答中の参加者が変わりました");
+        const outcome = engine.judge(msg.correct, now);
+        this.save();
+        const answerer = engine.getParticipant(outcome.participantId);
+        if (outcome.kind === "correct") {
+          this.sendToParticipant(outcome.participantId, { type: "answerResult", correct: true, correctRank: 1, remainingAttempts: null, points: outcome.points });
+          if (answerer) this.broadcast({ type: "someoneCorrect", participantId: answerer.id, nickname: answerer.nickname, correctRank: 1, points: outcome.points });
+          await this.afterClose(outcome.result);
+          return;
+        }
+        this.sendToParticipant(outcome.participantId, { type: "answerResult", correct: false, correctRank: null, remainingAttempts: 0, points: outcome.points });
+        this.broadcastBuzzer();
+        this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
         if (engine.allParticipantsDone()) await this.closeQuestion(now);
         return;
       }
@@ -246,11 +287,14 @@ export class Room extends DurableObject<Env> {
   }
 
   private async closeQuestion(now: number): Promise<void> {
-    const engine = this.engine!;
-    const result = engine.closeQuestion(now);
+    await this.afterClose(this.engine!.closeQuestion(now));
+  }
+
+  /** 問題が閉じた後の配信。エンジン側で閉じ済みの結果を受け取る */
+  private async afterClose(result: QuestionResultView): Promise<void> {
     this.save();
     this.broadcast({ type: "questionClosed", result });
-    this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
+    this.broadcast({ type: "leaderboard", entries: this.engine!.leaderboard() });
     await this.scheduleCleanup();
   }
 
@@ -284,7 +328,7 @@ export class Room extends DurableObject<Env> {
   private settingsView(): SettingsView {
     const engine = this.engine!;
     const effective: LiveSettings | null = engine.questionSet ? engine.settings() : null;
-    return { override: engine.settingsOverride(), effective };
+    return { override: engine.settingsOverride(), effective, mode: engine.questionSet ? engine.mode : null };
   }
 
   private stateFor(attachment: Attachment): StateMessage {
@@ -299,12 +343,13 @@ export class Room extends DurableObject<Env> {
       participants: engine.participants(),
       leaderboard: engine.leaderboard(),
       intro: engine.introView(),
-      question: engine.currentQuestionView(),
+      question: engine.currentQuestionView(attachment.role),
       questionResult: engine.questionResult(),
       me: me ? { ...me, status: engine.myStatus(me.id) } : null,
       questionSetName: engine.questionSet?.name ?? null,
       correctCount: engine.correctCount(),
       settings: this.settingsView(),
+      buzzer: engine.buzzerView(),
     };
   }
 
@@ -313,6 +358,24 @@ export class Room extends DurableObject<Env> {
       const att = ws.deserializeAttachment() as Attachment;
       this.send(ws, this.stateFor(att));
     }
+  }
+
+  /** 早押しモードでは参加者に問題文を送らないので、役割ごとに中身を変えて配る */
+  private broadcastQuestionStarted(): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as Attachment;
+      this.send(ws, { type: "questionStarted", question: this.engine!.currentQuestionView(att.role)! });
+    }
+  }
+
+  /** 早押しモードで出題中なら現在の早押し状態を全員に配る。それ以外は何もしない */
+  private broadcastBuzzer(): void {
+    const buzzer = this.engine!.buzzerView();
+    if (buzzer) this.broadcast({ type: "buzzerUpdated", buzzer });
+  }
+
+  private sendToParticipant(participantId: string, msg: ServerMessage): void {
+    for (const sock of this.ctx.getWebSockets(`pid:${participantId}`)) this.send(sock, msg);
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {
@@ -342,6 +405,9 @@ export class Room extends DurableObject<Env> {
       case "participant_not_found": return "参加者が見つかりません";
       case "invalid_state": return "操作を実行できません";
       case "bad_message": return "メッセージを解釈できません";
+      case "not_reading": return "まだ読み上げが始まっていません";
+      case "locked_out": return "この問題はもう押せません";
+      case "already_buzzed": return "すでに押しています";
     }
   }
 }
