@@ -62,7 +62,7 @@ describe("GameEngine start", () => {
     const view = startQuestions(e, makeSet({ timerMode: "fixed", timerSeconds: 20 }), false, T0);
     expect(e.phase).toBe("question");
     expect(view).toEqual({
-      index: 0, total: 2, prompt: "ごんり", hint: undefined,
+      index: 0, total: 2, mode: "anagram", prompt: "ごんり", hint: undefined,
       deadlineAt: T0 + 20_000, maxAttempts: 3,
     });
   });
@@ -265,7 +265,7 @@ describe("GameEngine close / next / final", () => {
     const r = e.next(T0 + 10_000);
     expect(r).toEqual({
       kind: "question",
-      question: { index: 1, total: 2, prompt: "なばな", hint: undefined, imageUrl: "/api/images/banana.png", deadlineAt: T0 + 10_000 + 30_000, maxAttempts: 3 },
+      question: { index: 1, total: 2, mode: "anagram", prompt: "なばな", hint: undefined, imageUrl: "/api/images/banana.png", deadlineAt: T0 + 10_000 + 30_000, maxAttempts: 3 },
     });
     expect(e.myStatus("p1")).toEqual({ attemptsUsed: 0, correct: false, correctRank: null });
   });
@@ -376,26 +376,26 @@ describe("GameEngine GM live controls", () => {
 
   describe("removeParticipant", () => {
     it("removes the participant and returns it", () => {
-      expect(e.removeParticipant("p1")).toMatchObject({ id: "p1", nickname: "みさき" });
+      expect(e.removeParticipant("p1", T0)).toMatchObject({ id: "p1", nickname: "みさき" });
       expect(e.getParticipant("p1")).toBeNull();
       expect(e.participants().map((p) => p.id)).toEqual(["p2"]);
       expect(e.leaderboard().map((l) => l.participantId)).toEqual(["p2"]);
     });
     it("returns null for an unknown participant", () => {
-      expect(e.removeParticipant("nobody")).toBeNull();
+      expect(e.removeParticipant("nobody", T0)).toBeNull();
     });
     it("drops the removed participant's answers so results and correct count ignore them", () => {
       startQuestions(e, makeSet(), false, T0);
       e.submitAnswer("p1", "りんご", T0 + 1);
       e.submitAnswer("p2", "りんご", T0 + 2);
-      e.removeParticipant("p1");
+      e.removeParticipant("p1", T0);
       expect(e.correctCount()).toBe(1);
       const result = e.closeQuestion(T0 + 3);
       expect(result.results.map((r) => r.participantId)).toEqual(["p2"]);
     });
     it("a removed participant can no longer answer", () => {
       startQuestions(e, makeSet(), false, T0);
-      e.removeParticipant("p1");
+      e.removeParticipant("p1", T0);
       expect(e.submitAnswer("p1", "りんご", T0 + 1)).toEqual({ kind: "rejected", code: "forbidden" });
     });
   });
@@ -497,7 +497,7 @@ describe("GameEngine intro", () => {
     expect(e.introIndex).toBe(0);
     expect(intro).toEqual({
       index: 0, total: 3,
-      slide: { kind: "title", name: "テスト", coverImageUrl: "/api/images/cover.png", questionCount: 2, settings: { ...DEFAULT_SETTINGS, maxAttempts: 5 } },
+      slide: { kind: "title", name: "テスト", coverImageUrl: "/api/images/cover.png", questionCount: 2, settings: { ...DEFAULT_SETTINGS, maxAttempts: 5 }, mode: "anagram" },
     });
     expect(e.introView()).toEqual(intro);
     expect(e.currentQuestionView()).toBeNull();
@@ -546,5 +546,189 @@ describe("GameEngine intro", () => {
     const snap = e.snapshot() as Partial<EngineState>;
     delete snap.introIndex;
     expect(GameEngine.fromSnapshot(snap as EngineState).introIndex).toBe(0);
+  });
+});
+
+describe("GameEngine buzzer mode", () => {
+  const PROMPT = "日本で一番高い山は何でしょう？";   // 15 文字
+  function makeBuzzerSet(overrides: Partial<QuestionSet["settings"]> = {}, questions?: QuestionSet["questions"]): QuestionSet {
+    return {
+      id: "bz", name: "早押し", mode: "buzzer",
+      settings: { ...DEFAULT_SETTINGS, charsPerSecond: 5, wrongPenalty: 20, ...overrides },
+      questions: questions ?? [
+        { id: "b1", type: "anagram", prompt: PROMPT, answers: ["富士山"], hint: "静岡と山梨" },
+        { id: "b2", type: "anagram", prompt: "二番目は？", answers: ["北岳"] },
+      ],
+    };
+  }
+  let e: GameEngine;
+  beforeEach(() => {
+    e = GameEngine.create("BZ0001");
+    e.addParticipant("p1", "みさき");
+    e.addParticipant("p2", "たろう");
+    e.addParticipant("p3", "ケン");
+  });
+
+  it("opens the question in ready state with no deadline even when timerMode is fixed", () => {
+    const view = startQuestions(e, makeBuzzerSet({ timerMode: "fixed", timerSeconds: 20 }), false, T0);
+    expect(view.mode).toBe("buzzer");
+    expect(view.deadlineAt).toBeNull();
+    expect(e.buzzerView()).toEqual({
+      status: "ready", readingStartedAt: null, revealedChars: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [],
+    });
+    expect(e.reconcileDeadline(T0 + 1000)).toEqual({ changed: false, deadlineAt: null });
+  });
+
+  it("strips the prompt and hint from the player view but not from the GM view", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    expect(e.currentQuestionView("gm")).toMatchObject({ prompt: PROMPT, hint: "静岡と山梨" });
+    expect(e.currentQuestionView("player")).toMatchObject({ prompt: "", hint: undefined, mode: "buzzer" });
+    expect(e.currentQuestionView()).toMatchObject({ prompt: PROMPT });
+  });
+
+  it("the title slide carries the mode", () => {
+    const intro = e.start(makeBuzzerSet(), false);
+    expect(intro.slide).toMatchObject({ kind: "title", mode: "buzzer" });
+    expect(e.start(makeSet(), false).slide).toMatchObject({ kind: "title", mode: "anagram" });
+  });
+
+  it("rejects buzzes before reading starts and text answers at any time", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    expect(e.buzz("p1", T0 + 100)).toEqual({ kind: "rejected", code: "not_reading" });
+    expect(e.submitAnswer("p1", "富士山", T0 + 100)).toEqual({ kind: "rejected", code: "not_in_question" });
+    expect(e.buzz("nobody", T0 + 100)).toEqual({ kind: "rejected", code: "forbidden" });
+  });
+
+  it("startReading moves to reading and only works from ready", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    const v = e.startReading(T0 + 2000);
+    expect(v).toMatchObject({ status: "reading", readingStartedAt: T0 + 2000, revealedChars: 0 });
+    expect(() => e.startReading(T0 + 3000)).toThrow();
+  });
+
+  it("the first buzz freezes the reveal at the server arrival time; later buzzes queue without moving it", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    expect(e.buzz("p2", T0 + 1400)).toEqual({ kind: "accepted", position: 1 });   // 1.4s × 5 = 7 文字
+    expect(e.buzzerView()).toMatchObject({ status: "paused", readingStartedAt: null, revealedChars: 7 });
+    expect(e.buzz("p1", T0 + 3000)).toEqual({ kind: "accepted", position: 2 });
+    expect(e.buzzerView()).toMatchObject({ revealedChars: 7, queue: [{ participantId: "p2", nickname: "たろう" }, { participantId: "p1", nickname: "みさき" }] });
+    expect(e.buzz("p2", T0 + 3100)).toEqual({ kind: "rejected", code: "already_buzzed" });
+  });
+
+  it("judge correct awards basePoints, records a rank-1 answer and closes the question", () => {
+    startQuestions(e, makeBuzzerSet({ basePoints: 100, rankBonus: [50, 30, 10] }), false, T0);
+    e.startReading(T0);
+    e.buzz("p2", T0 + 1000);
+    const r = e.judge(true, T0 + 5000);
+    expect(r).toMatchObject({ kind: "correct", participantId: "p2", points: 100 });
+    expect(e.phase).toBe("questionResult");
+    expect(e.buzzerView()).toBeNull();
+    expect(e.questionResult()?.results).toEqual([{ participantId: "p2", nickname: "たろう", correctRank: 1, points: 100 }]);
+    expect(e.getParticipant("p2")?.score).toBe(100);
+    expect(e.myStatus("p2")).toEqual({ attemptsUsed: 1, correct: true, correctRank: 1 });
+    expect(e.buzz("p1", T0 + 6000)).toEqual({ kind: "rejected", code: "not_in_question" });
+  });
+
+  it("judge wrong deducts wrongPenalty, locks the answerer out and passes the turn to the next in queue", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    e.buzz("p2", T0 + 1000);
+    e.buzz("p1", T0 + 1200);
+    const r = e.judge(false, T0 + 4000);
+    expect(r).toEqual({ kind: "wrong", participantId: "p2", points: -20 });
+    expect(e.getParticipant("p2")?.score).toBe(-20);
+    expect(e.buzzerView()).toMatchObject({ status: "paused", revealedChars: 5, queue: [{ participantId: "p1", nickname: "みさき" }], lockedOut: ["p2"] });
+    expect(e.myStatus("p2")).toEqual({ attemptsUsed: 1, correct: false, correctRank: null });
+    expect(e.buzz("p2", T0 + 4100)).toEqual({ kind: "rejected", code: "locked_out" });
+  });
+
+  it("judge wrong with an empty queue resumes reading from the frozen position", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    e.buzz("p2", T0 + 1000);
+    e.judge(false, T0 + 4000);
+    expect(e.buzzerView()).toMatchObject({ status: "reading", readingStartedAt: T0 + 4000, revealedChars: 5, queue: [] });
+    // 再開後 1 秒で 5 + 5 文字
+    expect(e.buzz("p1", T0 + 5000)).toEqual({ kind: "accepted", position: 1 });
+    expect(e.buzzerView()).toMatchObject({ status: "paused", revealedChars: 10 });
+  });
+
+  it("judge throws unless someone is answering", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    expect(() => e.judge(true, T0)).toThrow();
+    e.startReading(T0);
+    expect(() => e.judge(false, T0 + 10)).toThrow();
+  });
+
+  it("allParticipantsDone is true only when every connected participant is locked out and the queue is empty", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    e.setConnected("p3", false);
+    e.buzz("p1", T0 + 100); e.judge(false, T0 + 200);
+    expect(e.allParticipantsDone()).toBe(false);
+    e.buzz("p2", T0 + 300);
+    expect(e.allParticipantsDone()).toBe(false);   // p2 はキューに居る
+    e.judge(false, T0 + 400);
+    expect(e.allParticipantsDone()).toBe(true);
+  });
+
+  it("kicking the answerer passes the turn without a penalty; kicking someone further back only drops them", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    e.buzz("p2", T0 + 1000); e.buzz("p1", T0 + 1100); e.buzz("p3", T0 + 1200);
+    e.removeParticipant("p1", T0 + 2000);
+    expect(e.buzzerView()).toMatchObject({ status: "paused", queue: [{ participantId: "p2", nickname: "たろう" }, { participantId: "p3", nickname: "ケン" }] });
+    e.removeParticipant("p2", T0 + 3000);
+    expect(e.buzzerView()).toMatchObject({ status: "paused", revealedChars: 5, queue: [{ participantId: "p3", nickname: "ケン" }], lockedOut: [] });
+    expect(e.leaderboard().map((x) => x.score)).toEqual([0]);
+    e.removeParticipant("p3", T0 + 4000);
+    expect(e.buzzerView()).toMatchObject({ status: "reading", readingStartedAt: T0 + 4000, revealedChars: 5, queue: [] });
+  });
+
+  it("rebaseReading keeps the revealed count continuous when charsPerSecond changes", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    e.rebaseReading(T0 + 1000);                 // 5 文字表示済み
+    e.setSettingsOverride({ charsPerSecond: 10 });
+    expect(e.buzzerView()).toMatchObject({ status: "reading", readingStartedAt: T0 + 1000, revealedChars: 5, charsPerSecond: 10 });
+    e.buzz("p1", T0 + 1500);                    // + 0.5s × 10 = 5
+    expect(e.buzzerView()?.revealedChars).toBe(10);
+  });
+
+  it("rebaseReading does nothing outside reading", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.rebaseReading(T0 + 1000);
+    expect(e.buzzerView()).toMatchObject({ status: "ready", readingStartedAt: null, revealedChars: 0 });
+  });
+
+  it("close, next and endGame clear the buzzer state; the next question starts ready again", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    e.buzz("p1", T0 + 500);
+    e.closeQuestion(T0 + 1000);
+    expect(e.buzzerView()).toBeNull();
+    expect(e.snapshot().buzzer).toBeNull();
+    const r = e.next(T0 + 2000);
+    expect(r.kind).toBe("question");
+    expect(e.buzzerView()).toMatchObject({ status: "ready", promptLength: 5, queue: [], lockedOut: [] });
+    e.endGame();
+    expect(e.snapshot().buzzer).toBeNull();
+  });
+
+  it("restores a snapshot without a buzzer field and round-trips one with it", () => {
+    startQuestions(e, makeBuzzerSet(), false, T0);
+    e.startReading(T0);
+    e.buzz("p1", T0 + 500);
+    const snap = JSON.parse(JSON.stringify(e.snapshot())) as EngineState;
+    expect(GameEngine.fromSnapshot(snap).buzzerView()).toEqual(e.buzzerView());
+    const legacy = { ...snap } as Partial<EngineState>;
+    delete legacy.buzzer;
+    expect(GameEngine.fromSnapshot(legacy as EngineState).snapshot().buzzer).toBeNull();
+  });
+
+  it("counts an emoji prompt by code points", () => {
+    startQuestions(e, makeBuzzerSet({}, [{ id: "x", type: "anagram", prompt: "a😀b", answers: ["c"] }]), false, T0);
+    expect(e.buzzerView()?.promptLength).toBe(3);
   });
 });
