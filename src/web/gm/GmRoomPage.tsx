@@ -106,7 +106,7 @@ export function GmRoomPage() {
           {state.phase === "intro" && intro && (
             <div key={intro.index} className="qj-pop mx-auto my-auto w-full max-w-5xl">
               {intro.slide.kind === "title"
-                ? <TitleSlidePreview name={intro.slide.name} coverImageUrl={intro.slide.coverImageUrl} questionCount={intro.slide.questionCount} settings={intro.slide.settings} />
+                ? <TitleSlidePreview name={intro.slide.name} coverImageUrl={intro.slide.coverImageUrl} questionCount={intro.slide.questionCount} settings={intro.slide.settings} mode={intro.slide.mode} />
                 : <IntroSlidePreview heading={intro.slide.heading} body={intro.slide.body} imageUrl={intro.slide.imageUrl} />}
             </div>
           )}
