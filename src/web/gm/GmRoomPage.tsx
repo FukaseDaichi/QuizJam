@@ -27,7 +27,6 @@ export function GmRoomPage() {
   const [sets, setSets] = useState<QuestionSetSummary[]>([]);
   const [setId, setSetId] = useState("");
   const [carryOver, setCarryOver] = useState(false);
-  const [confettiSeed, setConfettiSeed] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
   const closePanel = useCallback(() => setPanelOpen(false), []);
   // 集中モード: 右カラムを外して問題を横幅いっぱいに映す。GM の好みとしてブラウザに保存する
@@ -40,7 +39,8 @@ export function GmRoomPage() {
       setSetId((cur) => cur || s[0]?.id || "");
     }).catch(() => {});
   }, []);
-  useEffect(() => { if (state.popups.length) setConfettiSeed(state.popups[state.popups.length - 1].id); }, [state.popups]);
+  // 紙吹雪はポップアップの表示中だけ出す。早押しの正解は someoneCorrect の直後に問題結果へ移るので、フェーズではなくポップアップに結び付ける
+  const latestPopup = state.popups[state.popups.length - 1];
   useEffect(() => { if (state.lastError) { const t = setTimeout(clearError, 3000); return () => clearTimeout(t); } }, [state.lastError, clearError]);
   const onPopupDone = useCallback((id: number) => dismissPopup(id), [dismissPopup]);
 
@@ -70,7 +70,7 @@ export function GmRoomPage() {
   return (
     <main className="grid min-h-full grid-rows-[auto_1fr_auto] bg-slate-900 text-slate-100">
       <ConnectionBanner connected={state.connected} />
-      {confettiSeed > 0 && state.phase === "question" && <Confetti key={confettiSeed} seed={confettiSeed} />}
+      {latestPopup && <Confetti key={latestPopup.id} seed={latestPopup.id} />}
 
       <header className="flex items-center justify-between border-b border-slate-800 px-8 py-4">
         <h1 className="text-brand text-3xl font-black">QuizJam</h1>

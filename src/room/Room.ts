@@ -266,9 +266,9 @@ export class Room extends DurableObject<Env> {
       case "judge": {
         const view = engine.buzzerView();
         if (!view || view.status !== "paused" || view.queue.length === 0) return this.sendError(ws, "invalid_state", "回答中の参加者がいません");
+        const outcome = engine.judge(msg.participantId, msg.correct, now);
         // 判定対象が回答中の人と違う（二度押しで次の人に回った後など）なら何もしない
-        if (view.queue[0].participantId !== msg.participantId) return this.sendError(ws, "invalid_state", "回答中の参加者が変わりました");
-        const outcome = engine.judge(msg.correct, now);
+        if (outcome.kind === "rejected") return this.sendError(ws, outcome.code, "回答中の参加者が変わりました");
         this.save();
         const answerer = engine.getParticipant(outcome.participantId);
         if (outcome.kind === "correct") {

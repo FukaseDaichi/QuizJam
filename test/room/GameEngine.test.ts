@@ -620,7 +620,7 @@ describe("GameEngine buzzer mode", () => {
     startQuestions(e, makeBuzzerSet({ basePoints: 100, rankBonus: [50, 30, 10] }), false, T0);
     e.startReading(T0);
     e.buzz("p2", T0 + 1000);
-    const r = e.judge(true, T0 + 5000);
+    const r = e.judge("p2", true, T0 + 5000);
     expect(r).toMatchObject({ kind: "correct", participantId: "p2", points: 100 });
     expect(e.phase).toBe("questionResult");
     expect(e.buzzerView()).toBeNull();
@@ -635,7 +635,7 @@ describe("GameEngine buzzer mode", () => {
     e.startReading(T0);
     e.buzz("p2", T0 + 1000);
     e.buzz("p1", T0 + 1200);
-    const r = e.judge(false, T0 + 4000);
+    const r = e.judge("p2", false, T0 + 4000);
     expect(r).toEqual({ kind: "wrong", participantId: "p2", points: -20 });
     expect(e.getParticipant("p2")?.score).toBe(-20);
     expect(e.buzzerView()).toMatchObject({ status: "paused", revealedChars: 5, queue: [{ participantId: "p1", nickname: "みさき" }], lockedOut: ["p2"] });
@@ -647,7 +647,7 @@ describe("GameEngine buzzer mode", () => {
     startQuestions(e, makeBuzzerSet(), false, T0);
     e.startReading(T0);
     e.buzz("p2", T0 + 1000);
-    e.judge(false, T0 + 4000);
+    e.judge("p2", false, T0 + 4000);
     expect(e.buzzerView()).toMatchObject({ status: "reading", readingStartedAt: T0 + 4000, revealedChars: 5, queue: [] });
     // 再開後 1 秒で 5 + 5 文字
     expect(e.buzz("p1", T0 + 5000)).toEqual({ kind: "accepted", position: 1 });
@@ -656,20 +656,20 @@ describe("GameEngine buzzer mode", () => {
 
   it("judge throws unless someone is answering", () => {
     startQuestions(e, makeBuzzerSet(), false, T0);
-    expect(() => e.judge(true, T0)).toThrow();
+    expect(() => e.judge("p1", true, T0)).toThrow();
     e.startReading(T0);
-    expect(() => e.judge(false, T0 + 10)).toThrow();
+    expect(() => e.judge("p1", false, T0 + 10)).toThrow();
   });
 
   it("allParticipantsDone is true only when every connected participant is locked out and the queue is empty", () => {
     startQuestions(e, makeBuzzerSet(), false, T0);
     e.startReading(T0);
     e.setConnected("p3", false);
-    e.buzz("p1", T0 + 100); e.judge(false, T0 + 200);
+    e.buzz("p1", T0 + 100); e.judge("p1", false, T0 + 200);
     expect(e.allParticipantsDone()).toBe(false);
     e.buzz("p2", T0 + 300);
     expect(e.allParticipantsDone()).toBe(false);   // p2 はキューに居る
-    e.judge(false, T0 + 400);
+    e.judge("p2", false, T0 + 400);
     expect(e.allParticipantsDone()).toBe(true);
   });
 
@@ -730,5 +730,27 @@ describe("GameEngine buzzer mode", () => {
   it("counts an emoji prompt by code points", () => {
     startQuestions(e, makeBuzzerSet({}, [{ id: "x", type: "anagram", prompt: "a😀b", answers: ["c"] }]), false, T0);
     expect(e.buzzerView()?.promptLength).toBe(3);
+  });
+});
+
+describe("GameEngine buzzer judge target", () => {
+  it("rejects a judge whose participantId is not the current answerer, without scoring anyone", () => {
+    const e = GameEngine.create("BZ0002");
+    e.addParticipant("p1", "みさき");
+    e.addParticipant("p2", "たろう");
+    const set: QuestionSet = {
+      id: "bz", name: "早押し", mode: "buzzer", settings: { ...DEFAULT_SETTINGS, wrongPenalty: 20 },
+      questions: [{ id: "b1", type: "anagram", prompt: "日本で一番高い山は何でしょう？", answers: ["富士山"] }],
+    };
+    startQuestions(e, set, false, T0);
+    e.startReading(T0);
+    e.buzz("p2", T0 + 1000);
+    e.buzz("p1", T0 + 1100);
+    expect(e.judge("p2", false, T0 + 2000)).toEqual({ kind: "wrong", participantId: "p2", points: -20 });
+    // 二度押し: p2 はもう回答中ではないので拒否され、p1 は減点されない
+    expect(e.judge("p2", false, T0 + 2100)).toEqual({ kind: "rejected", code: "invalid_state" });
+    expect(e.getParticipant("p1")?.score).toBe(0);
+    expect(e.buzzerView()).toMatchObject({ status: "paused", queue: [{ participantId: "p1", nickname: "みさき" }] });
+    expect(e.judge("p1", true, T0 + 3000)).toMatchObject({ kind: "correct", participantId: "p1", points: 100 });
   });
 });

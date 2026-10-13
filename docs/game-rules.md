@@ -1,6 +1,6 @@
 # ゲームルール
 
-ルールはすべて `src/room/GameEngine.ts` に集約する。Room Durable Object は判定結果を配信するだけで、ルールを持たない。
+ルールはすべて `src/room/GameEngine.ts` に集約する（早押しの「判定対象が回答中の人か」の確認も含む）。Room Durable Object は判定結果を配信するだけで、ルールを持たない。
 
 ## 出題形式
 

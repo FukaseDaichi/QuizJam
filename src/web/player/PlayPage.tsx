@@ -144,7 +144,10 @@ export function PlayPage() {
           <p className="mt-4 inline-flex items-center gap-1 text-lg">
             {status?.correct
               ? <><Check size={20} className="text-green-600" aria-hidden /><b className="text-green-700">正解しました</b></>
-              : <><X size={20} className="text-red-500" aria-hidden /><b className="text-red-600">不正解でした</b></>}
+              : status && status.attemptsUsed > 0
+                ? <><X size={20} className="text-red-500" aria-hidden /><b className="text-red-600">不正解でした</b></>
+                // 一度も回答（早押し）していない人を「不正解」と言わない。早押しでは勝者以外のほとんどがこれ
+                : <b className="text-slate-500">回答しませんでした</b>}
           </p>
           {status?.correct && state.lastAnswerResult?.correct && (
             <p className="qj-pop text-2xl font-black text-green-700">+{state.lastAnswerResult.points}点</p>

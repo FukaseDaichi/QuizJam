@@ -38,7 +38,8 @@ export type BuzzOutcome =
 
 export type JudgeOutcome =
   | { kind: "correct"; participantId: string; points: number; result: QuestionResultView }
-  | { kind: "wrong"; participantId: string; points: number };
+  | { kind: "wrong"; participantId: string; points: number }
+  | { kind: "rejected"; code: ErrorCode };   // 判定対象が回答中の人と違う（二度押しなど）
 
 export class GameEngine {
   private constructor(private s: EngineState) {}
@@ -405,11 +406,14 @@ export class GameEngine {
     return { kind: "accepted", position: b.queue.length };
   }
 
-  /** GM の判定。回答中（paused かつキューの先頭）の参加者に対して行う */
-  judge(correct: boolean, now: number): JudgeOutcome {
+  /**
+   * GM の判定。回答中（paused かつキューの先頭）の参加者に対して行う。
+   * participantId が回答中の人と違えば拒否する（ボタンの二度押しで次の人まで判定されないため）
+   */
+  judge(participantId: string, correct: boolean, now: number): JudgeOutcome {
     const b = this.s.buzzer;
     if (!b || this.s.phase !== "question" || b.status !== "paused" || b.queue.length === 0) throw new Error("nobody is answering");
-    const participantId = b.queue[0];
+    if (b.queue[0] !== participantId) return { kind: "rejected", code: "invalid_state" };
     const p = this.s.participants[participantId];
     const idx = this.s.currentIndex;
     const settings = this.settings(idx);
