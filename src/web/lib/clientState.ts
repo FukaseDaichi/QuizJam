@@ -29,7 +29,7 @@ export const initialClientState: ClientState = {
   participants: [], leaderboard: [], intro: null, question: null, questionResult: null, me: null,
   questionSetName: null, lastAnswerResult: null, popups: [], finalEntries: null, lastError: null, clockOffsetMs: 0,
   correctCountThisQuestion: 0,
-  settings: { override: {}, effective: null },
+  settings: { override: {}, effective: null, mode: null },
   kicked: false,
 };
 

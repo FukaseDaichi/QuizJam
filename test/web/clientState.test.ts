@@ -14,7 +14,8 @@ const baseState: StateMessage = {
   me: { id: "p1", nickname: "みさき", score: 0, connected: true, status: null },
   questionSetName: null,
   correctCount: 0,
-  settings: { override: {}, effective: null },
+  settings: { override: {}, effective: null, mode: null },
+  buzzer: null,
 };
 
 function withState(): ClientState {
@@ -45,7 +46,7 @@ describe("applyServerMessage", () => {
   it("questionStarted sets phase/question and clears previous answer result", () => {
     let s = withState();
     s = applyServerMessage(s, { type: "answerResult", correct: false, correctRank: null, remainingAttempts: 2, points: 0 }, T0);
-    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 20, prompt: "ごんり", deadlineAt: T0 + 30_000, maxAttempts: 3 } }, T0);
+    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 20, mode: "anagram" as const, prompt: "ごんり", deadlineAt: T0 + 30_000, maxAttempts: 3 } }, T0);
     expect(s.phase).toBe("question");
     expect(s.question?.prompt).toBe("ごんり");
     expect(s.lastAnswerResult).toBeNull();
@@ -55,14 +56,14 @@ describe("applyServerMessage", () => {
 
   it("deadlineSet updates the current question deadline", () => {
     let s = withState();
-    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, prompt: "x", deadlineAt: null, maxAttempts: null } }, T0);
+    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, mode: "anagram" as const, prompt: "x", deadlineAt: null, maxAttempts: null } }, T0);
     s = applyServerMessage(s, { type: "deadlineSet", deadlineAt: T0 + 15_000 }, T0);
     expect(s.question?.deadlineAt).toBe(T0 + 15_000);
   });
 
   it("answerResult updates my status and lastAnswerResult", () => {
     let s = withState();
-    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
+    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, mode: "anagram" as const, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
     s = applyServerMessage(s, { type: "answerResult", correct: false, correctRank: null, remainingAttempts: 2, points: 0 }, T0);
     expect(s.me?.status).toEqual({ attemptsUsed: 1, correct: false, correctRank: null });
     s = applyServerMessage(s, { type: "answerResult", correct: true, correctRank: 2, remainingAttempts: null, points: 130 }, T0);
@@ -91,14 +92,14 @@ describe("applyServerMessage", () => {
   it("correctCountThisQuestion comes from state and resets on questionStarted", () => {
     let s = applyServerMessage(initialClientState, { ...baseState, phase: "question", correctCount: 3 }, T0);
     expect(s.correctCountThisQuestion).toBe(3);
-    s = applyServerMessage(s, { type: "questionStarted", question: { index: 1, total: 2, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
+    s = applyServerMessage(s, { type: "questionStarted", question: { index: 1, total: 2, mode: "anagram" as const, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
     expect(s.correctCountThisQuestion).toBe(0);
   });
 
   it("settings come from state and are replaced by settingsUpdated", () => {
     let s = withState();
-    expect(s.settings).toEqual({ override: {}, effective: null });
-    const settings = { override: { timerSeconds: 5 }, effective: { ...DEFAULT_SETTINGS, timerSeconds: 5 } };
+    expect(s.settings).toEqual({ override: {}, effective: null, mode: null });
+    const settings = { override: { timerSeconds: 5 }, effective: { ...DEFAULT_SETTINGS, timerSeconds: 5 }, mode: "anagram" as const };
     s = applyServerMessage(s, { type: "settingsUpdated", settings }, T0);
     expect(s.settings).toEqual(settings);
   });
@@ -149,20 +150,20 @@ describe("remainingSeconds", () => {
 });
 
 describe("live settings during a question", () => {
-  const question = { index: 0, total: 2, prompt: "ごんり", deadlineAt: null, maxAttempts: 3 };
+  const question = { index: 0, total: 2, mode: "anagram" as const, prompt: "ごんり", deadlineAt: null, maxAttempts: 3 };
   const effective = { timerMode: "fixed" as const, timerSeconds: 10, basePoints: 100, rankBonus: [50], wrongPenalty: 0, maxAttempts: null, charsPerSecond: 6 };
 
   it("settingsUpdated applies the new maxAttempts to the running question", () => {
     let s = applyServerMessage(withState(), { type: "questionStarted", question }, T0);
-    s = applyServerMessage(s, { type: "settingsUpdated", settings: { override: { maxAttempts: null }, effective } }, T0);
+    s = applyServerMessage(s, { type: "settingsUpdated", settings: { override: { maxAttempts: null }, effective, mode: "anagram" } }, T0);
     expect(s.settings.effective).toEqual(effective);
     expect(s.question?.maxAttempts).toBeNull();
   });
 
   it("settingsUpdated without a running question only stores the settings", () => {
-    const s = applyServerMessage(withState(), { type: "settingsUpdated", settings: { override: {}, effective: null } }, T0);
+    const s = applyServerMessage(withState(), { type: "settingsUpdated", settings: { override: {}, effective: null, mode: null } }, T0);
     expect(s.question).toBeNull();
-    expect(s.settings).toEqual({ override: {}, effective: null });
+    expect(s.settings).toEqual({ override: {}, effective: null, mode: null });
   });
 
   it("deadlineSet with null clears the countdown", () => {
@@ -173,10 +174,10 @@ describe("live settings during a question", () => {
 });
 
 describe("intro slides", () => {
-  const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "テスト", questionCount: 1, settings: DEFAULT_SETTINGS } };
+  const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "テスト", questionCount: 1, settings: DEFAULT_SETTINGS, mode: "anagram" } };
 
   it("introStarted sets phase and intro and clears question state", () => {
-    let s = applyServerMessage(withState(), { type: "questionStarted", question: { index: 0, total: 1, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
+    let s = applyServerMessage(withState(), { type: "questionStarted", question: { index: 0, total: 1, mode: "anagram" as const, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
     s = applyServerMessage(s, { type: "answerResult", correct: false, correctRank: null, remainingAttempts: 2, points: 0 }, T0);
     s = applyServerMessage(s, { type: "introStarted", intro }, T0);
     expect(s.phase).toBe("intro");
@@ -195,7 +196,7 @@ describe("intro slides", () => {
 
   it("questionStarted clears intro", () => {
     let s = applyServerMessage(withState(), { type: "introStarted", intro }, T0);
-    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
+    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, total: 1, mode: "anagram" as const, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
     expect(s.intro).toBeNull();
     expect(s.phase).toBe("question");
   });
