@@ -150,7 +150,7 @@ describe("remainingSeconds", () => {
 
 describe("live settings during a question", () => {
   const question = { index: 0, total: 2, prompt: "ごんり", deadlineAt: null, maxAttempts: 3 };
-  const effective = { timerMode: "fixed" as const, timerSeconds: 10, basePoints: 100, rankBonus: [50], wrongPenalty: 0, maxAttempts: null };
+  const effective = { timerMode: "fixed" as const, timerSeconds: 10, basePoints: 100, rankBonus: [50], wrongPenalty: 0, maxAttempts: null, charsPerSecond: 6 };
 
   it("settingsUpdated applies the new maxAttempts to the running question", () => {
     let s = applyServerMessage(withState(), { type: "questionStarted", question }, T0);

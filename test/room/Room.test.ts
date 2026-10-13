@@ -306,7 +306,7 @@ describe("Room DO GM live controls", () => {
     const isOverride = (m: { settings: { override: { timerSeconds?: number } } }) => m.settings.override.timerSeconds === 5;
     const upd = await gm.waitFor("settingsUpdated", isOverride);
     expect(upd.settings.override).toEqual({ timerSeconds: 5, maxAttempts: null });
-    expect(upd.settings.effective).toEqual({ timerMode: "fixed", timerSeconds: 5, maxAttempts: null, wrongPenalty: 0, basePoints: 100, rankBonus: [50, 30, 10] });
+    expect(upd.settings.effective).toEqual({ timerMode: "fixed", timerSeconds: 5, maxAttempts: null, wrongPenalty: 0, basePoints: 100, rankBonus: [50, 30, 10], charsPerSecond: 6 });
     // 参加者にも届き、残り回答回数の表示に使う maxAttempts が今の問題に反映される
     const updP = await c1.waitFor("settingsUpdated", isOverride);
     expect(updP.settings.effective?.maxAttempts).toBeNull();

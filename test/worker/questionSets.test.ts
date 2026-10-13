@@ -6,7 +6,7 @@ const auth = { Authorization: "Bearer test-pass", "Content-Type": "application/j
 
 const input = {
   name: "果物",
-  settings: { timerMode: "fixed", timerSeconds: 20, basePoints: 100, rankBonus: [50, 30, 10], wrongPenalty: 0, maxAttempts: 3 },
+  settings: { timerMode: "fixed", timerSeconds: 20, basePoints: 100, rankBonus: [50, 30, 10], wrongPenalty: 0, maxAttempts: 3, charsPerSecond: 6 },
   questions: [{ id: "q1", type: "anagram", prompt: "ごんり", answers: ["りんご"] }],
 };
 

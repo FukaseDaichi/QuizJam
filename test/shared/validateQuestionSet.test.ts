@@ -102,3 +102,29 @@ describe("validateQuestionSetInput whitespace", () => {
     expect("error" in v ? v.error : v.questions[0].prompt).toBe("ごんり");
   });
 });
+
+describe("validateQuestionSetInput buzzer mode", () => {
+  it("accepts mode buzzer and drops mode anagram", () => {
+    const buzzer = validateQuestionSetInput({ ...base, mode: "buzzer", questions: [{ prompt: "日本一高い山は？", answers: ["富士山"] }] });
+    expect("error" in buzzer ? buzzer.error : buzzer.mode).toBe("buzzer");
+    const anagram = validateQuestionSetInput({ ...base, mode: "anagram", questions: [{ prompt: "ごんり", answers: ["りんご"] }] });
+    expect("error" in anagram ? anagram.error : anagram.mode).toBeUndefined();
+    expect(validateQuestionSetInput({ ...base, mode: "speed", questions: [{ prompt: "x", answers: ["y"] }] })).toEqual({ error: "mode invalid" });
+  });
+
+  it("requires a prompt on every question in buzzer mode even when it has an image", () => {
+    const v = validateQuestionSetInput({ ...base, mode: "buzzer", questions: [{ prompt: "", answers: ["富士山"], imageUrl: "/api/images/a.webp" }] });
+    expect(v).toEqual({ error: "questions[0].prompt is required" });
+  });
+
+  it("fills charsPerSecond with the default and validates its range", () => {
+    const ok = validateQuestionSetInput({ ...base, questions: [{ prompt: "x", answers: ["y"] }] });
+    expect("error" in ok ? ok.error : ok.settings.charsPerSecond).toBe(6);
+    const custom = validateQuestionSetInput({ ...base, settings: { charsPerSecond: 12 }, questions: [{ prompt: "x", answers: ["y"] }] });
+    expect("error" in custom ? custom.error : custom.settings.charsPerSecond).toBe(12);
+    expect(validateQuestionSetInput({ ...base, settings: { charsPerSecond: 0 }, questions: [{ prompt: "x", answers: ["y"] }] })).toEqual({ error: "settings.charsPerSecond invalid" });
+    expect(validateQuestionSetInput({ ...base, settings: { charsPerSecond: 31 }, questions: [{ prompt: "x", answers: ["y"] }] })).toEqual({ error: "settings.charsPerSecond invalid" });
+    expect(validateQuestionSetInput({ ...base, settings: { charsPerSecond: 2.5 }, questions: [{ prompt: "x", answers: ["y"] }] })).toEqual({ error: "settings.charsPerSecond invalid" });
+    expect(validateQuestionSetInput({ ...base, questions: [{ prompt: "x", answers: ["y"], overrides: { charsPerSecond: 40 } }] })).toEqual({ error: "questions[0].settings.charsPerSecond invalid" });
+  });
+});
