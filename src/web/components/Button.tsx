@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 import type { LucideIcon } from "lucide-react";
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "brand" | "primary" | "secondary" | "danger";
+  variant?: "brand" | "primary" | "secondary" | "danger" | "success";
   size?: "md" | "lg";
   icon?: LucideIcon;
 };
@@ -12,6 +12,7 @@ const variants = {
   primary: "bg-blue-600 text-white hover:bg-blue-500",
   secondary: "bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600",
   danger: "bg-red-600 text-white hover:bg-red-500",
+  success: "bg-green-600 text-white hover:bg-green-500",
 };
 const sizes = { md: "h-12 px-5 text-base", lg: "h-14 px-7 text-lg" };
 

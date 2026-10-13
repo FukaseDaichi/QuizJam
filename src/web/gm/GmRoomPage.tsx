@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowRight, Crown, Home, PanelRightClose, PanelRightOpen, Play, RotateCcw, Settings, Square, Users } from "lucide-react";
+import { ArrowRight, Check, Crown, Home, PanelRightClose, PanelRightOpen, Play, RotateCcw, Settings, Square, Users, X } from "lucide-react";
 import { useRoomSocket } from "../lib/useRoomSocket";
 import { api } from "../lib/api";
 import { storage } from "../lib/storage";
@@ -13,6 +13,8 @@ import { ConnectionBanner } from "../components/ConnectionBanner";
 import { CorrectPopup } from "./CorrectPopup";
 import { Confetti } from "./Confetti";
 import { GmControlPanel } from "./GmControlPanel";
+import { BuzzerQuestion } from "./BuzzerQuestion";
+import { buzzerScreenPromptSizeClass } from "../lib/slideText";
 import { isLightColor } from "../lib/color";
 import { IntroSlidePreview, TitleSlidePreview } from "../components/Slides";
 import type { QuestionSetSummary } from "../../shared/types";
@@ -62,6 +64,8 @@ export function GmRoomPage() {
   const imageHeight = state.phase === "questionResult" ? "max-h-[calc(100vh-36rem)]" : q?.prompt ? "max-h-[calc(100vh-30rem)]" : "max-h-[calc(100vh-24rem)]";
   // 結果表示中に解説画像があれば、問題画像と出題文の代わりに解説画像だけを映す
   const explanationImageUrl = state.phase === "questionResult" ? state.questionResult?.explanationImageUrl : undefined;
+  const buzzerMode = q?.mode === "buzzer";
+  const buzzer = state.buzzer;
 
   return (
     <main className="grid min-h-full grid-rows-[auto_1fr_auto] bg-slate-900 text-slate-100">
@@ -113,22 +117,30 @@ export function GmRoomPage() {
 
           {(state.phase === "question" || state.phase === "questionResult") && q && (
             <Card tone={light ? "light" : "dark"} className="flex flex-1 flex-col" style={q.background ? { backgroundColor: q.background, borderColor: q.background } : undefined}>
-              <div className={`flex items-center justify-between ${light ? "text-slate-500" : "text-slate-400"}`}>
-                <span className="text-xl font-bold">第{q.index + 1}問 / {q.total}問</span>
-                {state.phase === "question" && <CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} size="lg" />}
-              </div>
-              <div key={explanationImageUrl ? `${q.index}-explanation` : q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">
-                {explanationImageUrl ? (
-                  <img src={explanationImageUrl} alt="解説" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />
-                ) : (
-                  <>
-                    {q.imageUrl && <img src={q.imageUrl} alt="" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />}
-                    {q.prompt && <p className={`break-all text-center font-black leading-tight tracking-widest ${q.imageUrl ? "text-5xl" : "text-7xl"}`}>{q.prompt}</p>}
-                  </>
-                )}
-              </div>
-              {state.phase === "question" && (
-                <p className={`text-center text-xl ${light ? "text-slate-600" : "text-slate-300"}`}>正解者 {state.correctCountThisQuestion} / 参加者 {connectedCount}</p>
+              {buzzerMode && state.phase === "question" ? (
+                <BuzzerQuestion question={q} buzzer={buzzer} clockOffsetMs={state.clockOffsetMs} light={light} imageHeight={imageHeight} />
+              ) : (
+                <>
+                  <div className={`flex items-center justify-between ${light ? "text-slate-500" : "text-slate-400"}`}>
+                    <span className="text-xl font-bold">第{q.index + 1}問 / {q.total}問</span>
+                    {state.phase === "question" && <CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} size="lg" />}
+                  </div>
+                  <div key={explanationImageUrl ? `${q.index}-explanation` : q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">
+                    {explanationImageUrl ? (
+                      <img src={explanationImageUrl} alt="解説" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />
+                    ) : (
+                      <>
+                        {q.imageUrl && <img src={q.imageUrl} alt="" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />}
+                        {q.prompt && (buzzerMode
+                          ? <p className={`w-full whitespace-pre-wrap break-words text-left font-bold leading-snug ${buzzerScreenPromptSizeClass(Array.from(q.prompt).length)}`}>{q.prompt}</p>
+                          : <p className={`break-all text-center font-black leading-tight tracking-widest ${q.imageUrl ? "text-5xl" : "text-7xl"}`}>{q.prompt}</p>)}
+                      </>
+                    )}
+                  </div>
+                  {state.phase === "question" && (
+                    <p className={`text-center text-xl ${light ? "text-slate-600" : "text-slate-300"}`}>正解者 {state.correctCountThisQuestion} / 参加者 {connectedCount}</p>
+                  )}
+                </>
               )}
               {state.phase === "questionResult" && state.questionResult && (
                 <div className={`qj-slide-in rounded-2xl p-6 text-center ${light ? "bg-white/70" : "bg-slate-700/60"}`}>
@@ -169,6 +181,15 @@ export function GmRoomPage() {
       <footer className="flex items-center justify-end gap-3 border-t border-slate-800 px-8 py-4">
         {state.phase === "intro" && intro && (
           <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{intro.index + 1 >= intro.total ? "第1問へ" : "次へ"}</Button>
+        )}
+        {state.phase === "question" && buzzerMode && buzzer?.status === "ready" && (
+          <Button variant="brand" size="lg" icon={Play} onClick={() => send({ type: "startReading" })}>読み上げ開始</Button>
+        )}
+        {state.phase === "question" && buzzerMode && buzzer?.status === "paused" && buzzer.queue.length > 0 && (
+          <>
+            <Button variant="success" size="lg" icon={Check} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: true })}>正解</Button>
+            <Button variant="danger" size="lg" icon={X} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: false })}>不正解</Button>
+          </>
         )}
         {state.phase === "question" && <Button variant="secondary" size="lg" icon={Square} onClick={() => send({ type: "close" })}>締切</Button>}
         {state.phase === "questionResult" && <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{q && q.index + 1 >= q.total ? "最終結果へ" : "次の問題へ"}</Button>}
