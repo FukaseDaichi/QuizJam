@@ -1,4 +1,4 @@
-import type { IntroSlide, Question, QuestionSettings } from "../../shared/types";
+import type { IntroSlide, Question, QuestionSetMode, QuestionSettings } from "../../shared/types";
 import { MAX_INTRO_SLIDES } from "../../shared/validateQuestionSet";
 
 /** 編集画面で選択中のスライド。"title" がタイトル、{ intro } が説明スライド、数値が問題のインデックス */
@@ -8,6 +8,7 @@ export const isIntroSel = (s: Selection): s is { intro: number } => typeof s ===
 
 export interface EditorDraft {
   name: string;
+  mode: QuestionSetMode;
   coverImageUrl?: string;
   slideBackground?: string;
   introSlides: IntroSlide[];
@@ -19,8 +20,10 @@ export function introEmpty(s: IntroSlide): boolean {
   return !s.heading?.trim() && !s.body?.trim() && !s.imageUrl;
 }
 
-export function questionIncomplete(q: Question): boolean {
-  return (!q.prompt.trim() && !q.imageUrl) || !q.answers.some((a) => a.trim());
+/** 早押しでは問題文が必須（画像だけでは読み上げられない）。アナグラムは画像があれば出題文を省略できる */
+export function questionIncomplete(q: Question, mode: QuestionSetMode = "anagram"): boolean {
+  const noPrompt = mode === "buzzer" ? !q.prompt.trim() : !q.prompt.trim() && !q.imageUrl;
+  return noPrompt || !q.answers.some((a) => a.trim());
 }
 
 /** 保存前チェック。問題のある最初のスライドと日本語の文言を返す */
@@ -33,7 +36,11 @@ export function findProblem(d: EditorDraft): { slide: Selection; message: string
   }
   for (const [i, q] of d.questions.entries()) {
     if (!q.answers.some((a) => a.trim())) return { slide: i, message: `第${i + 1}問の正解を入力してください` };
-    if (!q.prompt.trim() && !q.imageUrl) return { slide: i, message: `第${i + 1}問の出題文か画像を入れてください（出題文は「生成」で正解から作れます）` };
+    if (d.mode === "buzzer") {
+      if (!q.prompt.trim()) return { slide: i, message: `第${i + 1}問の問題文を入力してください` };
+    } else if (!q.prompt.trim() && !q.imageUrl) {
+      return { slide: i, message: `第${i + 1}問の出題文か画像を入れてください（出題文は「生成」で正解から作れます）` };
+    }
   }
   return null;
 }

@@ -1,7 +1,8 @@
-import type { Answer, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSet, QuestionSettings } from "../shared/types";
+import type { Answer, BuzzerState, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSet, QuestionSetMode, QuestionSettings } from "../shared/types";
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
-import type { ErrorCode, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
+import { promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
+import type { BuzzerView, ErrorCode, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
 
 export interface EngineState {
   roomCode: string;
@@ -17,6 +18,8 @@ export interface EngineState {
   answers: Answer[];
   /** GM による設定の上書き。ゲームをまたいで保持する */
   settingsOverride: Partial<LiveSettings>;
+  /** 早押しモードで出題中にだけ持つ。それ以外は null */
+  buzzer: BuzzerState | null;
 }
 
 export type AnswerOutcome =
@@ -28,6 +31,15 @@ export type NextOutcome =
   | { kind: "intro"; intro: IntroView }
   | { kind: "question"; question: QuestionView }
   | { kind: "final"; entries: LeaderboardEntry[] };
+
+export type BuzzOutcome =
+  | { kind: "accepted"; position: number }          // キュー内の順番（1 が回答中）
+  | { kind: "rejected"; code: ErrorCode };
+
+export type JudgeOutcome =
+  | { kind: "correct"; participantId: string; points: number; result: QuestionResultView }
+  | { kind: "wrong"; participantId: string; points: number }
+  | { kind: "rejected"; code: ErrorCode };   // 判定対象が回答中の人と違う（二度押しなど）
 
 export class GameEngine {
   private constructor(private s: EngineState) {}
@@ -45,15 +57,17 @@ export class GameEngine {
       participants: {},
       answers: [],
       settingsOverride: {},
+      buzzer: null,
     });
   }
 
   static fromSnapshot(state: EngineState): GameEngine {
-    // 旧スナップショットには settingsOverride / introIndex が無い
+    // 旧スナップショットには settingsOverride / introIndex / buzzer が無い
     return new GameEngine({
       ...structuredClone(state),
       settingsOverride: structuredClone(state.settingsOverride ?? {}),
       introIndex: state.introIndex ?? 0,
+      buzzer: structuredClone(state.buzzer ?? null),
     });
   }
 
@@ -67,6 +81,8 @@ export class GameEngine {
   get questionSet(): QuestionSet | null { return this.s.questionSet; }
   get currentIndex(): number { return this.s.currentIndex; }
   get introIndex(): number { return this.s.introIndex; }
+  get mode(): QuestionSetMode { return this.s.questionSet?.mode ?? "anagram"; }
+  private get isBuzzer(): boolean { return this.mode === "buzzer"; }
 
   // ---- participants ----
   addParticipant(id: string, nickname: string): Participant {
@@ -102,11 +118,19 @@ export class GameEngine {
     return { ...p };
   }
 
-  removeParticipant(id: string): Participant | null {
+  removeParticipant(id: string, now: number): Participant | null {
     const p = this.s.participants[id];
     if (!p) return null;
     delete this.s.participants[id];
     this.s.answers = this.s.answers.filter((a) => a.participantId !== id);
+    const b = this.s.buzzer;
+    if (b) {
+      const wasAnswering = b.status === "paused" && b.queue[0] === id;
+      b.queue = b.queue.filter((x) => x !== id);
+      b.lockedOut = b.lockedOut.filter((x) => x !== id);
+      // 回答中の人が消えたら不正解と同じように次へ回す（減点はしない）
+      if (wasAnswering) this.resumeIfQueueEmpty(now);
+    }
     return { ...p };
   }
 
@@ -128,7 +152,7 @@ export class GameEngine {
    */
   reconcileDeadline(now: number): { changed: boolean; deadlineAt: number | null } {
     const before = this.s.deadlineAt;
-    if (this.s.phase !== "question" || !this.s.questionSet) return { changed: false, deadlineAt: before };
+    if (this.s.phase !== "question" || !this.s.questionSet || this.isBuzzer) return { changed: false, deadlineAt: before };
     const settings = this.settings();
     let after: number | null;
     if (settings.timerMode === "none") after = null;
@@ -162,7 +186,7 @@ export class GameEngine {
     const slides = set.introSlides ?? [];
     const i = this.s.introIndex;
     const slide: IntroSlideView = i === 0
-      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0) }
+      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode }
       : { kind: "slide", heading: slides[i - 1].heading, body: slides[i - 1].body, imageUrl: slides[i - 1].imageUrl };
     return { index: i, total: 1 + slides.length, slide };
   }
@@ -172,7 +196,14 @@ export class GameEngine {
     this.s.currentIndex = index;
     this.s.phase = "question";
     this.s.questionStartedAt = now;
-    this.s.deadlineAt = settings.timerMode === "fixed" ? now + settings.timerSeconds * 1000 : null;
+    if (this.isBuzzer) {
+      // 早押しは締切を持たず、GM の「読み上げ開始」を待つ
+      this.s.deadlineAt = null;
+      this.s.buzzer = { status: "ready", readingStartedAt: null, revealedChars: 0, queue: [], lockedOut: [] };
+    } else {
+      this.s.deadlineAt = settings.timerMode === "fixed" ? now + settings.timerSeconds * 1000 : null;
+      this.s.buzzer = null;
+    }
   }
 
   settings(index = this.s.currentIndex): QuestionSettings {
@@ -180,15 +211,18 @@ export class GameEngine {
     return { ...resolveSettings(this.s.questionSet, index), ...this.s.settingsOverride };
   }
 
-  currentQuestionView(): QuestionView | null {
+  /** 早押しモードでは参加者に問題文とヒントを渡さない（スマホはボタン専用機） */
+  currentQuestionView(role: "gm" | "player" = "gm"): QuestionView | null {
     const set = this.s.questionSet;
     if (!set || (this.s.phase !== "question" && this.s.phase !== "questionResult")) return null;
     const q = set.questions[this.s.currentIndex];
+    const hidden = this.isBuzzer && role === "player";
     return {
       index: this.s.currentIndex,
       total: set.questions.length,
-      prompt: q.prompt,
-      hint: q.hint,
+      mode: this.mode,
+      prompt: hidden ? "" : q.prompt,
+      hint: hidden ? undefined : q.hint,
       imageUrl: q.imageUrl,
       background: set.slideBackground,
       deadlineAt: this.s.deadlineAt,
@@ -209,6 +243,7 @@ export class GameEngine {
 
   submitAnswer(participantId: string, text: string, now: number): AnswerOutcome {
     if (this.s.phase !== "question" || !this.s.questionSet) return { kind: "rejected", code: "not_in_question" };
+    if (this.isBuzzer) return { kind: "rejected", code: "not_in_question" };
     const p = this.s.participants[participantId];
     if (!p) return { kind: "rejected", code: "forbidden" };
     if (this.s.deadlineAt !== null && now >= this.s.deadlineAt) return { kind: "rejected", code: "deadline_passed" };
@@ -247,6 +282,7 @@ export class GameEngine {
   closeQuestion(now: number): QuestionResultView {
     if (this.s.phase !== "question") throw new Error("not in question phase");
     this.s.phase = "questionResult";
+    this.s.buzzer = null;
     if (this.s.deadlineAt === null || this.s.deadlineAt > now) this.s.deadlineAt = now;
     return this.questionResult()!;
   }
@@ -293,6 +329,7 @@ export class GameEngine {
 
   endGame(): void {
     this.s.phase = "lobby";
+    this.s.buzzer = null;
     this.s.introIndex = 0;
     this.s.deadlineAt = null;
     this.s.questionStartedAt = null;
@@ -306,14 +343,102 @@ export class GameEngine {
 
   allParticipantsDone(): boolean {
     if (this.s.phase !== "question") return false;
-    const settings = this.settings();
     const active = Object.values(this.s.participants).filter((p) => p.connected);
     if (active.length === 0) return false;
+    const b = this.s.buzzer;
+    if (b) return b.queue.length === 0 && active.every((p) => b.lockedOut.includes(p.id));
+    const settings = this.settings();
     return active.every((p) => {
       const st = this.myStatus(p.id)!;
       if (st.correct) return true;
       return settings.maxAttempts !== null && st.attemptsUsed >= settings.maxAttempts;
     });
+  }
+
+  // ---- buzzer mode ----
+  private timeline(b: BuzzerState): RevealTimeline {
+    const q = this.s.questionSet!.questions[this.s.currentIndex];
+    return { status: b.status, readingStartedAt: b.readingStartedAt, revealedChars: b.revealedChars, promptLength: promptLength(q.prompt), charsPerSecond: this.settings().charsPerSecond };
+  }
+
+  buzzerView(): BuzzerView | null {
+    const b = this.s.buzzer;
+    if (!b || this.s.phase !== "question" || !this.s.questionSet) return null;
+    const t = this.timeline(b);
+    return {
+      status: t.status, readingStartedAt: t.readingStartedAt, revealedChars: t.revealedChars, promptLength: t.promptLength, charsPerSecond: t.charsPerSecond,
+      queue: b.queue.map((id) => ({ participantId: id, nickname: this.s.participants[id]?.nickname ?? "?" })),
+      lockedOut: [...b.lockedOut],
+    };
+  }
+
+  /** GM の「読み上げ開始」。ready のときだけ */
+  startReading(now: number): BuzzerView {
+    const b = this.s.buzzer;
+    if (!b || this.s.phase !== "question" || b.status !== "ready") throw new Error("not ready to read");
+    b.status = "reading";
+    b.readingStartedAt = now;
+    return this.buzzerView()!;
+  }
+
+  /** 読み上げ中なら区間の起点を今に取り直す。charsPerSecond を変える直前に呼び、表示済みの位置が飛ばないようにする */
+  rebaseReading(now: number): void {
+    const b = this.s.buzzer;
+    if (!b || this.s.phase !== "question" || b.status !== "reading") return;
+    b.revealedChars = revealedCount(this.timeline(b), now);
+    b.readingStartedAt = now;
+  }
+
+  /** 参加者の早押し。受信順にキューへ。最初の1人で読み上げが止まる */
+  buzz(participantId: string, now: number): BuzzOutcome {
+    const b = this.s.buzzer;
+    if (!b || this.s.phase !== "question") return { kind: "rejected", code: "not_in_question" };
+    if (!this.s.participants[participantId]) return { kind: "rejected", code: "forbidden" };
+    if (b.status === "ready") return { kind: "rejected", code: "not_reading" };
+    if (b.lockedOut.includes(participantId)) return { kind: "rejected", code: "locked_out" };
+    if (b.queue.includes(participantId)) return { kind: "rejected", code: "already_buzzed" };
+    if (b.status === "reading") {
+      b.revealedChars = revealedCount(this.timeline(b), now);
+      b.readingStartedAt = null;
+      b.status = "paused";
+    }
+    b.queue.push(participantId);
+    return { kind: "accepted", position: b.queue.length };
+  }
+
+  /**
+   * GM の判定。回答中（paused かつキューの先頭）の参加者に対して行う。
+   * participantId が回答中の人と違えば拒否する（ボタンの二度押しで次の人まで判定されないため）
+   */
+  judge(participantId: string, correct: boolean, now: number): JudgeOutcome {
+    const b = this.s.buzzer;
+    if (!b || this.s.phase !== "question" || b.status !== "paused" || b.queue.length === 0) throw new Error("nobody is answering");
+    if (b.queue[0] !== participantId) return { kind: "rejected", code: "invalid_state" };
+    const p = this.s.participants[participantId];
+    const idx = this.s.currentIndex;
+    const settings = this.settings(idx);
+    if (correct) {
+      const points = settings.basePoints;
+      if (p) p.score += points;
+      this.s.answers.push({ questionIndex: idx, participantId, text: "", correct: true, submittedAt: now, correctRank: 1, points });
+      const result = this.closeQuestion(now);
+      return { kind: "correct", participantId, points, result };
+    }
+    const points = settings.wrongPenalty === 0 ? 0 : -settings.wrongPenalty;
+    if (p) p.score += points;
+    this.s.answers.push({ questionIndex: idx, participantId, text: "", correct: false, submittedAt: now, correctRank: null, points });
+    b.queue.shift();
+    b.lockedOut.push(participantId);
+    this.resumeIfQueueEmpty(now);
+    return { kind: "wrong", participantId, points };
+  }
+
+  /** 回答者が居なくなったら続きから読み上げを再開する。残っていれば次の人が回答中のまま */
+  private resumeIfQueueEmpty(now: number): void {
+    const b = this.s.buzzer;
+    if (!b || b.status !== "paused" || b.queue.length > 0) return;
+    b.status = "reading";
+    b.readingStartedAt = now;
   }
 
   leaderboard(): LeaderboardEntry[] {

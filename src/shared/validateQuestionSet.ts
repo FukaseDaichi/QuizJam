@@ -1,9 +1,17 @@
-import type { IntroSlide, Question, QuestionSet, QuestionSettings } from "./types";
+import type { IntroSlide, Question, QuestionSet, QuestionSetMode, QuestionSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./defaults";
 
 export type QuestionSetInput = Omit<QuestionSet, "id">;
 
 const TIMER_MODES = new Set(["fixed", "afterFirstCorrect", "none"]);
+const MODES = new Set<QuestionSetMode>(["anagram", "buzzer"]);
+
+export const MIN_CHARS_PER_SECOND = 1;
+export const MAX_CHARS_PER_SECOND = 30;
+
+export function isValidCharsPerSecond(x: unknown): x is number {
+  return Number.isInteger(x) && (x as number) >= MIN_CHARS_PER_SECOND && (x as number) <= MAX_CHARS_PER_SECOND;
+}
 
 /** 画像 URL は自サーバーの /api/images/<key> か https のみ許可する */
 export function isValidImageUrl(x: unknown): x is string {
@@ -59,6 +67,7 @@ function validateSettings(x: unknown, partial: boolean): QuestionSettings | Part
   if ("rankBonus" in o) { if (!Array.isArray(o.rankBonus) || !o.rankBonus.every((n) => typeof n === "number")) return { error: "settings.rankBonus invalid" }; out.rankBonus = o.rankBonus as number[]; }
   if ("wrongPenalty" in o) { if (typeof o.wrongPenalty !== "number") return { error: "settings.wrongPenalty invalid" }; out.wrongPenalty = o.wrongPenalty; }
   if ("maxAttempts" in o) { if (o.maxAttempts !== null && (typeof o.maxAttempts !== "number" || o.maxAttempts < 1)) return { error: "settings.maxAttempts invalid" }; out.maxAttempts = o.maxAttempts as number | null; }
+  if ("charsPerSecond" in o) { if (!isValidCharsPerSecond(o.charsPerSecond)) return { error: "settings.charsPerSecond invalid" }; out.charsPerSecond = o.charsPerSecond; }
   return partial ? out : { ...DEFAULT_SETTINGS, ...out };
 }
 
@@ -66,6 +75,11 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
   if (typeof x !== "object" || x === null) return { error: "body must be an object" };
   const o = x as Record<string, unknown>;
   if (typeof o.name !== "string" || o.name.trim().length === 0) return { error: "name is required" };
+  let mode: QuestionSetMode | undefined;
+  if (o.mode !== undefined && o.mode !== null) {
+    if (!MODES.has(o.mode as QuestionSetMode)) return { error: "mode invalid" };
+    if (o.mode === "buzzer") mode = "buzzer";   // anagram は既定なので省略する
+  }
   const settings = validateSettings(o.settings ?? {}, false);
   if ("error" in settings) return settings;
   const coverImageUrl = optionalImageUrl(o.coverImageUrl, "coverImageUrl");
@@ -86,7 +100,8 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
     // 出題文は画像があれば省略できる（画像の中に文字が描かれている問題）
     if (qq.prompt !== undefined && typeof qq.prompt !== "string") return { error: `questions[${i}].prompt invalid` };
     const prompt = typeof qq.prompt === "string" ? qq.prompt.trim() : "";
-    if (prompt.length === 0 && !imageUrl) return { error: `questions[${i}].prompt is required` };
+    // 早押しは読み上げる文章が要るので、画像があっても問題文を省略できない
+    if (prompt.length === 0 && (mode === "buzzer" || !imageUrl)) return { error: `questions[${i}].prompt is required` };
     if (!Array.isArray(qq.answers) || qq.answers.length === 0 || !qq.answers.every((a) => typeof a === "string" && a.length > 0)) {
       return { error: `questions[${i}].answers must be a non-empty string array` };
     }
@@ -108,7 +123,7 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
     });
   }
   return {
-    name: o.name.trim(), coverImageUrl, slideBackground,
+    name: o.name.trim(), mode, coverImageUrl, slideBackground,
     introSlides: introSlides.length ? introSlides : undefined,
     settings: settings as QuestionSettings, questions,
   };

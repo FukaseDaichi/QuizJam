@@ -8,6 +8,7 @@ import { Card } from "../components/Card";
 import { Leaderboard } from "../components/Leaderboard";
 import { CountdownTimer } from "../components/CountdownTimer";
 import { ConnectionBanner } from "../components/ConnectionBanner";
+import { BuzzerPanel } from "./BuzzerPanel";
 
 export function PlayPage() {
   const { code = "" } = useParams();
@@ -48,6 +49,7 @@ export function PlayPage() {
   const q = state.question;
   const remaining = q?.maxAttempts == null ? null : Math.max(0, q.maxAttempts - (status?.attemptsUsed ?? 0));
   const canAnswer = state.phase === "question" && !status?.correct && (remaining === null || remaining > 0);
+  const buzzerMode = q?.mode === "buzzer";
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -74,7 +76,14 @@ export function PlayPage() {
         </Card>
       )}
 
-      {state.ready && state.phase === "question" && q && (
+      {state.ready && state.phase === "question" && q && buzzerMode && (
+        <>
+          <p className="text-sm font-bold text-slate-500">第{q.index + 1}問 / {q.total}問</p>
+          <BuzzerPanel question={q} buzzer={state.buzzer} meId={me?.id} status={status} lastPoints={state.lastAnswerResult?.correct ? state.lastAnswerResult.points : null} shake={shake} send={send} />
+        </>
+      )}
+
+      {state.ready && state.phase === "question" && q && !buzzerMode && (
         <>
           <Card>
             <p className="text-sm font-bold text-slate-500">第{q.index + 1}問 / {q.total}問</p>
@@ -135,8 +144,14 @@ export function PlayPage() {
           <p className="mt-4 inline-flex items-center gap-1 text-lg">
             {status?.correct
               ? <><Check size={20} className="text-green-600" aria-hidden /><b className="text-green-700">正解しました</b></>
-              : <><X size={20} className="text-red-500" aria-hidden /><b className="text-red-600">不正解でした</b></>}
+              : status && status.attemptsUsed > 0
+                ? <><X size={20} className="text-red-500" aria-hidden /><b className="text-red-600">不正解でした</b></>
+                // 一度も回答（早押し）していない人を「不正解」と言わない。早押しでは勝者以外のほとんどがこれ
+                : <b className="text-slate-500">回答しませんでした</b>}
           </p>
+          {status?.correct && state.lastAnswerResult?.correct && (
+            <p className="qj-pop text-2xl font-black text-green-700">+{state.lastAnswerResult.points}点</p>
+          )}
           <p className="mt-2 text-slate-600">現在 <b className="text-slate-900">{myRank ?? "-"}位</b> / {me?.score ?? 0}点</p>
           <div className="mt-4 text-left"><Leaderboard entries={state.leaderboard.slice(0, 3)} meId={me?.id} compact /></div>
         </Card>

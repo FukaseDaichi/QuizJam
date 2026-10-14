@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { TIMER_MODE_LABELS } from "../lib/labels";
+import { MODE_LABELS, TIMER_MODE_LABELS } from "../lib/labels";
 import { ChevronDown, ChevronRight, Plus, Shuffle, X } from "lucide-react";
-import type { IntroSlide, Question, QuestionSettings, TimerMode } from "../../shared/types";
+import type { IntroSlide, Question, QuestionSetMode, QuestionSettings, TimerMode } from "../../shared/types";
+import { MAX_CHARS_PER_SECOND, MIN_CHARS_PER_SECOND } from "../../shared/validateQuestionSet";
 import { shuffleAnagram } from "../../shared/anagram";
 import { Button } from "../components/Button";
 import { Field, SectionTitle, inputClass, textareaClass } from "./fields";
@@ -12,14 +13,21 @@ const num = (v: string) => (v === "" ? 0 : Number(v));
 const TIMER_LABELS = TIMER_MODE_LABELS;
 
 /** タイトルスライド＝企画名・表紙・セット全体の設定 */
-export function TitleInspector({ name, coverImageUrl, slideBackground, settings, passphrase, onName, onCover, onSlideBackground, onSettings }: {
-  name: string; coverImageUrl?: string; slideBackground?: string; settings: QuestionSettings; passphrase: string;
-  onName: (v: string) => void; onCover: (v: string | undefined) => void; onSlideBackground: (v: string | undefined) => void; onSettings: (s: QuestionSettings) => void;
+export function TitleInspector({ name, mode, coverImageUrl, slideBackground, settings, passphrase, onName, onMode, onCover, onSlideBackground, onSettings }: {
+  name: string; mode: QuestionSetMode; coverImageUrl?: string; slideBackground?: string; settings: QuestionSettings; passphrase: string;
+  onName: (v: string) => void; onMode: (v: QuestionSetMode) => void; onCover: (v: string | undefined) => void; onSlideBackground: (v: string | undefined) => void; onSettings: (s: QuestionSettings) => void;
 }) {
+  const buzzer = mode === "buzzer";
   return (
     <div className="flex flex-col gap-5">
       <Field label="企画名">
         <input value={name} onChange={(e) => onName(e.target.value)} placeholder="例: 新人歓迎会クイズ 2026" className={`${inputClass} text-lg`} autoFocus />
+      </Field>
+      <Field label="出題形式" hint="セット全体で1つ">
+        <select value={mode} onChange={(e) => onMode(e.target.value as QuestionSetMode)} className={inputClass}>
+          {(Object.keys(MODE_LABELS) as QuestionSetMode[]).map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
+        </select>
+        {buzzer && <p className="mt-1 text-xs font-normal text-slate-500">問題文が GM 画面に一文字ずつ表示され、参加者はスマホのボタンで早押しして口頭で答えます。正解・不正解は GM が判定します</p>}
       </Field>
       <ImageField label="表紙画像（任意）" value={coverImageUrl} onChange={onCover} passphrase={passphrase} />
       <div className="text-sm font-bold text-slate-300">
@@ -38,18 +46,29 @@ export function TitleInspector({ name, coverImageUrl, slideBackground, settings,
         <SectionTitle>全問共通の設定</SectionTitle>
         <p className="mt-1 text-xs text-slate-500">各問題の「この問題だけの設定」で個別に上書きできます。</p>
         <div className="mt-3 flex flex-col gap-3">
-          <Field label="制限時間">
-            <select value={settings.timerMode} onChange={(e) => onSettings({ ...settings, timerMode: e.target.value as TimerMode })} className={inputClass}>
-              {(Object.keys(TIMER_LABELS) as TimerMode[]).map((m) => <option key={m} value={m}>{TIMER_LABELS[m]}</option>)}
-            </select>
-          </Field>
+          {!buzzer && (
+            <Field label="制限時間">
+              <select value={settings.timerMode} onChange={(e) => onSettings({ ...settings, timerMode: e.target.value as TimerMode })} className={inputClass}>
+                {(Object.keys(TIMER_LABELS) as TimerMode[]).map((m) => <option key={m} value={m}>{TIMER_LABELS[m]}</option>)}
+              </select>
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="秒数">
-              <input type="number" min={0} value={settings.timerSeconds} onChange={(e) => onSettings({ ...settings, timerSeconds: num(e.target.value) })} className={inputClass} disabled={settings.timerMode === "none"} />
-            </Field>
-            <Field label="お手付き上限" hint="空で無制限">
-              <input type="number" min={1} value={settings.maxAttempts ?? ""} onChange={(e) => onSettings({ ...settings, maxAttempts: e.target.value === "" ? null : Number(e.target.value) })} className={inputClass} />
-            </Field>
+            {!buzzer && (
+              <Field label="秒数">
+                <input type="number" min={0} value={settings.timerSeconds} onChange={(e) => onSettings({ ...settings, timerSeconds: num(e.target.value) })} className={inputClass} disabled={settings.timerMode === "none"} />
+              </Field>
+            )}
+            {!buzzer && (
+              <Field label="お手付き上限" hint="空で無制限">
+                <input type="number" min={1} value={settings.maxAttempts ?? ""} onChange={(e) => onSettings({ ...settings, maxAttempts: e.target.value === "" ? null : Number(e.target.value) })} className={inputClass} />
+              </Field>
+            )}
+            {buzzer && (
+              <Field label="読み上げ速度" hint="文字/秒">
+                <input type="number" min={MIN_CHARS_PER_SECOND} max={MAX_CHARS_PER_SECOND} value={settings.charsPerSecond} onChange={(e) => onSettings({ ...settings, charsPerSecond: num(e.target.value) })} className={inputClass} />
+              </Field>
+            )}
             <Field label="基本点">
               <input type="number" value={settings.basePoints} onChange={(e) => onSettings({ ...settings, basePoints: num(e.target.value) })} className={inputClass} />
             </Field>
@@ -57,9 +76,11 @@ export function TitleInspector({ name, coverImageUrl, slideBackground, settings,
               <input type="number" min={0} value={settings.wrongPenalty} onChange={(e) => onSettings({ ...settings, wrongPenalty: num(e.target.value) })} className={inputClass} />
             </Field>
           </div>
-          <Field label="正解順ボーナス" hint="1位から順にカンマ区切り">
-            <input value={settings.rankBonus.join(",")} onChange={(e) => onSettings({ ...settings, rankBonus: e.target.value.split(",").map((s) => s.trim()).filter(Boolean).map(Number).filter((n) => !Number.isNaN(n)) })} className={inputClass} />
-          </Field>
+          {!buzzer && (
+            <Field label="正解順ボーナス" hint="1位から順にカンマ区切り">
+              <input value={settings.rankBonus.join(",")} onChange={(e) => onSettings({ ...settings, rankBonus: e.target.value.split(",").map((s) => s.trim()).filter(Boolean).map(Number).filter((n) => !Number.isNaN(n)) })} className={inputClass} />
+            </Field>
+          )}
         </div>
       </div>
     </div>
@@ -86,13 +107,14 @@ export function IntroInspector({ slide, passphrase, onChange }: {
 }
 
 /** 問題スライド＝1問分の内容と個別設定 */
-export function QuestionInspector({ question, index, baseSettings, passphrase, onChange }: {
-  question: Question; index: number; baseSettings: QuestionSettings; passphrase: string; onChange: (patch: Partial<Question>) => void;
+export function QuestionInspector({ question, index, mode, baseSettings, passphrase, onChange }: {
+  question: Question; index: number; mode: QuestionSetMode; baseSettings: QuestionSettings; passphrase: string; onChange: (patch: Partial<Question>) => void;
 }) {
   const answers = question.answers.length ? question.answers : [""];
   const setAnswer = (i: number, v: string) => onChange({ answers: answers.map((a, j) => (j === i ? v : a)) });
   const removeAnswer = (i: number) => onChange({ answers: answers.length === 1 ? [""] : answers.filter((_, j) => j !== i) });
   const primary = answers[0]?.trim() ?? "";
+  const buzzer = mode === "buzzer";
 
   return (
     <div className="flex flex-col gap-5">
@@ -114,28 +136,36 @@ export function QuestionInspector({ question, index, baseSettings, passphrase, o
         </button>
       </div>
 
-      <Field label="出題文" hint="画面に大きく表示されるシャッフル済み文字列。画像に文字が描かれていれば空欄でよい">
-        <div className="mt-1 flex gap-2">
-          <input value={question.prompt} onChange={(e) => onChange({ prompt: e.target.value })} placeholder="例: ごんり" className={`${inputClass} mt-0 text-lg font-bold tracking-widest`} />
-          <Button type="button" variant="secondary" icon={Shuffle} disabled={!primary} onClick={() => onChange({ prompt: shuffleAnagram(primary) })} aria-label="正解からシャッフル生成" className="shrink-0">生成</Button>
-        </div>
-      </Field>
+      {buzzer ? (
+        <Field label="問題文（読み上げる文章）" hint="GM 画面に一文字ずつ表示される。参加者には見せない">
+          <textarea rows={4} value={question.prompt} onChange={(e) => onChange({ prompt: e.target.value })} placeholder="例: 日本で一番高い山は何でしょう？" className={`${textareaClass} text-lg`} />
+        </Field>
+      ) : (
+        <Field label="出題文" hint="画面に大きく表示されるシャッフル済み文字列。画像に文字が描かれていれば空欄でよい">
+          <div className="mt-1 flex gap-2">
+            <input value={question.prompt} onChange={(e) => onChange({ prompt: e.target.value })} placeholder="例: ごんり" className={`${inputClass} mt-0 text-lg font-bold tracking-widest`} />
+            <Button type="button" variant="secondary" icon={Shuffle} disabled={!primary} onClick={() => onChange({ prompt: shuffleAnagram(primary) })} aria-label="正解からシャッフル生成" className="shrink-0">生成</Button>
+          </div>
+        </Field>
+      )}
 
       <ImageField label="問題画像（任意）" value={question.imageUrl} onChange={(imageUrl) => onChange({ imageUrl })} passphrase={passphrase} />
 
       <ImageField label="解説画像（任意・問題結果の画面に表示）" value={question.explanationImageUrl} onChange={(explanationImageUrl) => onChange({ explanationImageUrl })} passphrase={passphrase} />
 
-      <Field label="ヒント（任意）" hint="参加者が「ヒントを見る」を押すと表示">
-        <textarea rows={2} value={question.hint ?? ""} onChange={(e) => onChange({ hint: e.target.value || undefined })} className={textareaClass} />
-      </Field>
+      {!buzzer && (
+        <Field label="ヒント（任意）" hint="参加者が「ヒントを見る」を押すと表示">
+          <textarea rows={2} value={question.hint ?? ""} onChange={(e) => onChange({ hint: e.target.value || undefined })} className={textareaClass} />
+        </Field>
+      )}
 
-      <OverridesPanel key={question.id} index={index} overrides={question.overrides} base={baseSettings} onChange={(overrides) => onChange({ overrides })} />
+      <OverridesPanel key={question.id} index={index} mode={mode} overrides={question.overrides} base={baseSettings} onChange={(overrides) => onChange({ overrides })} />
     </div>
   );
 }
 
-function OverridesPanel({ index, overrides, base, onChange }: {
-  index: number; overrides?: Partial<QuestionSettings>; base: QuestionSettings; onChange: (o: Partial<QuestionSettings> | undefined) => void;
+function OverridesPanel({ index, mode, overrides, base, onChange }: {
+  index: number; mode: QuestionSetMode; overrides?: Partial<QuestionSettings>; base: QuestionSettings; onChange: (o: Partial<QuestionSettings> | undefined) => void;
 }) {
   const active = !!overrides && Object.keys(overrides).length > 0;
   const [open, setOpen] = useState(active);
@@ -146,6 +176,7 @@ function OverridesPanel({ index, overrides, base, onChange }: {
     onChange(Object.keys(next).length ? next : undefined);
   };
   const timerMode = o.timerMode ?? base.timerMode;
+  const buzzer = mode === "buzzer";
 
   return (
     <div className="rounded-xl border border-slate-700">
@@ -154,7 +185,22 @@ function OverridesPanel({ index, overrides, base, onChange }: {
         第{index + 1}問だけの設定
         {active && <span className="ml-auto rounded-full bg-purple-500/30 px-2 py-0.5 text-xs text-purple-200">上書き中</span>}
       </button>
-      {open && (
+      {open && buzzer && (
+        <div className="grid grid-cols-2 gap-3 border-t border-slate-700 p-3">
+          <Field label="基本点" hint={`共通: ${base.basePoints}`}>
+            <input type="number" value={o.basePoints ?? ""} placeholder={String(base.basePoints)}
+              onChange={(e) => (e.target.value === "" ? set({}, ["basePoints"]) : set({ basePoints: Number(e.target.value) }))} className={inputClass} />
+          </Field>
+          <Field label="読み上げ速度" hint={`共通: ${base.charsPerSecond}`}>
+            <input type="number" min={MIN_CHARS_PER_SECOND} max={MAX_CHARS_PER_SECOND} value={o.charsPerSecond ?? ""} placeholder={String(base.charsPerSecond)}
+              onChange={(e) => (e.target.value === "" ? set({}, ["charsPerSecond"]) : set({ charsPerSecond: Number(e.target.value) }))} className={inputClass} />
+          </Field>
+          {active && (
+            <button type="button" onClick={() => onChange(undefined)} className="col-span-2 self-start text-xs font-bold text-slate-400 underline hover:text-slate-200">上書きをすべて解除</button>
+          )}
+        </div>
+      )}
+      {open && !buzzer && (
         <div className="flex flex-col gap-3 border-t border-slate-700 p-3">
           <Field label="制限時間">
             <select value={o.timerMode ?? ""} onChange={(e) => (e.target.value ? set({ timerMode: e.target.value as TimerMode }) : set({}, ["timerMode"]))} className={inputClass}>

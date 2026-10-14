@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: QuestionSettings = {
   rankBonus: [50, 30, 10],
   wrongPenalty: 0,
   maxAttempts: 3,
+  charsPerSecond: 6,
 };
 
 export function resolveSettings(set: QuestionSet, index: number): QuestionSettings {

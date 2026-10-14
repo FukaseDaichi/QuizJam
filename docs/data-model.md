@@ -17,6 +17,7 @@
 interface QuestionSet {
   id: string;
   name: string;                // 企画名（タイトルスライドに表示）
+  mode?: "anagram" | "buzzer"; // 省略時 anagram。buzzer なら全問が早押し
   coverImageUrl?: string;      // 表紙画像
   slideBackground?: string;    // 問題スライドの背景色（#rrggbb）。画像の地の色に合わせる用途
   introSlides?: IntroSlide[];  // 説明スライド。省略時は無し。20枚まで
@@ -39,6 +40,7 @@ interface QuestionSettings {
   rankBonus: number[];         // 既定 [50, 30, 10]。空配列でボーナスなし
   wrongPenalty: number;        // 既定 0
   maxAttempts: number | null;  // 既定 3。null で無制限
+  charsPerSecond: number;      // 既定 6。早押しの文字送り（文字/秒）。アナグラムでは使わない
 }
 
 interface Question {
@@ -63,13 +65,14 @@ JSON インポート／エクスポートは `QuestionSet` から `id` を除い
 API 受信時とインポート時に同じ検証を適用する。
 
 - `name` は必須（前後空白を除いて1文字以上）
-- `settings` は省略可。指定したキーだけ検証し、残りは既定値で補う。`timerMode` は3モードのいずれか、`timerSeconds` は 0 以上、`maxAttempts` は `null` か 1 以上
+- `mode` は省略可。`"anagram"` か `"buzzer"`。`"anagram"` は保存時に省略する
+- `settings` は省略可。指定したキーだけ検証し、残りは既定値で補う。`timerMode` は3モードのいずれか、`timerSeconds` は 0 以上、`maxAttempts` は `null` か 1 以上、`charsPerSecond` は 1〜30 の整数
 - `coverImageUrl` / `imageUrl` / `explanationImageUrl` は `/api/images/<key>` か `https://` で始まる 500 文字以内の URL
 - `slideBackground` は `#rrggbb`
 - `introSlides` は省略可。20件まで。各要素は `heading`（100文字以内）・`body`（1000文字以内）・`imageUrl` のいずれか1つが必須。`heading` / `body` / `prompt` は前後の空白を除いて保存し、空白だけなら無指定として扱う。`introSlides` が空なら保存時に省略する
 - `introSlides[].id` が無ければサーバーが UUID を採番する
 - `questions[].answers` は空でない文字列の配列（1件以上）
-- `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する（`explanationImageUrl` は出題文の代わりにならない）
+- `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する（`explanationImageUrl` は出題文の代わりにならない）。`mode: "buzzer"` では読み上げる文章が要るので、画像があっても `prompt` は必須
 - `questions[].id` が無ければサーバーが UUID を採番する
 
 ### D1 スキーマ
@@ -107,6 +110,16 @@ interface EngineState {
   participants: Record<string, Participant>;
   answers: Answer[];
   settingsOverride: Partial<LiveSettings>;   // GM のライブ設定。ゲームをまたいで保持
+  buzzer: BuzzerState | null;  // 早押しモードで出題中のみ。それ以外は null
+}
+
+/** 早押しモードの出題中の状態 */
+interface BuzzerState {
+  status: "ready" | "reading" | "paused";
+  readingStartedAt: number | null;  // reading のとき、今の区間を読み始めたサーバー時刻 (UNIX ms)
+  revealedChars: number;            // 区間の起点。止めたときまでに表示済みの文字数（コードポイント単位）
+  queue: string[];                  // 早押しキュー（参加者 ID、サーバー受信順）。先頭が回答中
+  lockedOut: string[];              // この問題で不正解になり、押せなくなった参加者 ID
 }
 
 interface Participant {
@@ -134,4 +147,4 @@ Durable Object の SQLite には次を保存する。
 | `kv` | `snapshot`（`EngineState` の JSON）、`gmToken`、`alarmKind`（`deadline` か `cleanup`） |
 | `tokens` | 参加者トークン → 参加者 ID |
 
-状態を変更するたびにスナップショットを書き戻し、オブジェクト起動時に復元する。
+状態を変更するたびにスナップショットを書き戻し、オブジェクト起動時に復元する。旧スナップショットに `buzzer` が無ければ `null` として復元する。早押しの正解・不正解も `answers` に `text: ""` で記録する（正解は `correctRank: 1`、`points: basePoints`。不正解は `points: −wrongPenalty`）。

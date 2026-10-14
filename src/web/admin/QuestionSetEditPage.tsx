@@ -26,7 +26,7 @@ function newIntroSlide(): IntroSlide {
 
 type Draft = EditorDraft;
 
-const EMPTY_DRAFT: Draft = { name: "", introSlides: [], settings: DEFAULT_SETTINGS, questions: [newQuestion()] };
+const EMPTY_DRAFT: Draft = { name: "", mode: "anagram", introSlides: [], settings: DEFAULT_SETTINGS, questions: [newQuestion()] };
 
 function toInput(d: Draft): QuestionSetInput | { error: string } {
   return validateQuestionSetInput({
@@ -39,7 +39,7 @@ function toInput(d: Draft): QuestionSetInput | { error: string } {
 
 function fromSet(s: QuestionSet | QuestionSetInput): Draft {
   return {
-    name: s.name, coverImageUrl: s.coverImageUrl, slideBackground: s.slideBackground,
+    name: s.name, mode: s.mode ?? "anagram", coverImageUrl: s.coverImageUrl, slideBackground: s.slideBackground,
     introSlides: s.introSlides ?? [],
     settings: { ...DEFAULT_SETTINGS, ...s.settings },
     questions: s.questions.length ? s.questions : [newQuestion()],
@@ -74,7 +74,7 @@ function Editor({ passphrase }: { passphrase: string }) {
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
-  const { questions, settings, introSlides } = draft;
+  const { questions, settings, introSlides, mode } = draft;
   const total = questions.length;
   const introCount = introSlides.length;
   const current = typeof selected === "number" ? questions[selected] : undefined;
@@ -106,7 +106,7 @@ function Editor({ passphrase }: { passphrase: string }) {
   };
   const removeQuestion = (i: number) => {
     const q = questions[i];
-    if (!questionIncomplete(q) && !confirm(`第${i + 1}問「${q.answers[0] || q.prompt}」を削除しますか？`)) return;
+    if (!questionIncomplete(q, mode) && !confirm(`第${i + 1}問「${q.answers[0] || q.prompt}」を削除しますか？`)) return;
     setDraft((d) => ({ ...d, questions: d.questions.filter((_, j) => j !== i) }));
     setSelected(i > 0 ? i - 1 : total > 1 ? 0 : "title");
   };
@@ -234,7 +234,7 @@ function Editor({ passphrase }: { passphrase: string }) {
             <li ref={registerThumb("title")}>
               <button type="button" onClick={() => setSelected("title")} className={thumbClass(selected === "title")} aria-current={selected === "title" ? "true" : undefined}>
                 <span className="w-5 shrink-0 pt-0.5 text-right text-xs font-bold text-slate-400">T</span>
-                <span className="min-w-0 flex-1"><TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} compact /></span>
+                <span className="min-w-0 flex-1"><TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} compact /></span>
               </button>
             </li>
             {introSlides.map((s, i) => {
@@ -251,12 +251,12 @@ function Editor({ passphrase }: { passphrase: string }) {
               );
             })}
             {questions.map((q, i) => {
-              const incomplete = questionIncomplete(q);
+              const incomplete = questionIncomplete(q, mode);
               return (
                 <li key={q.id} ref={registerThumb(q.id)}>
                   <button type="button" onClick={() => setSelected(i)} className={thumbClass(selected === i)} aria-current={selected === i ? "true" : undefined} aria-label={`第${i + 1}問${incomplete ? "（未入力あり）" : ""}`}>
                     <span className="w-5 shrink-0 pt-0.5 text-right text-xs font-bold text-slate-400">{i + 1}</span>
-                    <span className="min-w-0 flex-1"><QuestionSlidePreview question={q} index={i} total={total} settings={resolveSettings({ id: "", ...draft }, i)} background={draft.slideBackground} compact /></span>
+                    <span className="min-w-0 flex-1"><QuestionSlidePreview question={q} index={i} total={total} settings={resolveSettings({ id: "", ...draft }, i)} background={draft.slideBackground} mode={mode} compact /></span>
                     {incomplete && <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-slate-900" aria-hidden />}
                   </button>
                 </li>
@@ -273,10 +273,10 @@ function Editor({ passphrase }: { passphrase: string }) {
         <section className="flex min-h-0 flex-col items-center justify-center gap-4 overflow-y-auto bg-slate-950/60 p-8">
           <div className="w-full max-w-4xl">
             {selected === "title"
-              ? <TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} />
+              ? <TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} />
               : isIntroSel(selected)
                 ? currentIntro && <IntroSlidePreview heading={currentIntro.heading} body={currentIntro.body} imageUrl={currentIntro.imageUrl} />
-                : current && <QuestionSlidePreview question={current} index={selected} total={total} settings={resolveSettings({ id: "", ...draft }, selected)} background={draft.slideBackground} />}
+                : current && <QuestionSlidePreview question={current} index={selected} total={total} settings={resolveSettings({ id: "", ...draft }, selected)} background={draft.slideBackground} mode={mode} />}
           </div>
           <div className="flex items-center gap-2 text-slate-300">
             <button type="button" onClick={goPrev} disabled={selected === "title"} className={toolBtn} aria-label="前のスライド"><ChevronLeft size={22} /></button>
@@ -309,12 +309,12 @@ function Editor({ passphrase }: { passphrase: string }) {
           <h2 className="mb-4 text-lg font-black">{heading}</h2>
           {selected === "title" ? (
             <TitleInspector name={draft.name} coverImageUrl={draft.coverImageUrl} slideBackground={draft.slideBackground} settings={settings} passphrase={passphrase}
-              onName={(name) => patch({ name })} onCover={(coverImageUrl) => patch({ coverImageUrl })} onSlideBackground={(slideBackground) => patch({ slideBackground })}
+              onName={(name) => patch({ name })} mode={mode} onMode={(mode) => patch({ mode })} onCover={(coverImageUrl) => patch({ coverImageUrl })} onSlideBackground={(slideBackground) => patch({ slideBackground })}
               onSettings={(s) => patch({ settings: s })} />
           ) : isIntroSel(selected) ? (
             currentIntro && <IntroInspector key={currentIntro.id} slide={currentIntro} passphrase={passphrase} onChange={(p) => updateIntro(selected.intro, p)} />
           ) : current && (
-            <QuestionInspector key={current.id} question={current} index={selected} baseSettings={settings} passphrase={passphrase} onChange={(p) => updateQuestion(selected, p)} />
+            <QuestionInspector key={current.id} question={current} index={selected} mode={mode} baseSettings={settings} passphrase={passphrase} onChange={(p) => updateQuestion(selected, p)} />
           )}
         </aside>
       </div>
