@@ -39,7 +39,7 @@ export function GmRoomPage() {
       setSetId((cur) => cur || s[0]?.id || "");
     }).catch(() => {});
   }, []);
-  // 紙吹雪はポップアップの表示中だけ出す。早押しの正解は someoneCorrect の直後に問題結果へ移るので、フェーズではなくポップアップに結び付ける
+  // 紙吹雪はポップアップごとに噴射する。早押しの正解は someoneCorrect の直後に問題結果へ移るので、フェーズには結び付けない
   const latestPopup = state.popups[state.popups.length - 1];
   useEffect(() => { if (state.lastError) { const t = setTimeout(clearError, 3000); return () => clearTimeout(t); } }, [state.lastError, clearError]);
   const onPopupDone = useCallback((id: number) => dismissPopup(id), [dismissPopup]);
@@ -70,7 +70,7 @@ export function GmRoomPage() {
   return (
     <main className="grid min-h-full grid-rows-[auto_1fr_auto] bg-slate-900 text-slate-100">
       <ConnectionBanner connected={state.connected} />
-      {latestPopup && <Confetti key={latestPopup.id} seed={latestPopup.id} />}
+      <Confetti burst={latestPopup?.id ?? 0} />
 
       <header className="flex items-center justify-between border-b border-slate-800 px-8 py-4">
         <h1 className="text-brand text-3xl font-black">QuizJam</h1>

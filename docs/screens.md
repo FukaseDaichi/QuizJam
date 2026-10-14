@@ -98,6 +98,6 @@ localStorage に `quizjam:` プレフィックスで保存する。
 - `introStarted` で `intro` を置き、問題と結果を消す。タイトルスライドから企画名も取り込む。`questionStarted` で `intro` を消す
 - `questionStarted` で自分の回答状況・前回の判定結果・正解者数をリセットする
 - `buzzerUpdated` で `buzzer` を置き、`questionStarted` / `questionClosed` / `introStarted` / `finalResult` で消す。表示済み文字数はクライアントが補正済みの時刻で共有の式（`revealedCount`）から計算し、`buzzerUpdated` で区間の起点が置き換わると押された位置で揃う
-- `someoneCorrect` はポップアップのキューに積む（最大5件）。GM 画面はポップアップの表示中だけ紙吹雪を出す（早押しの正解は直後に問題結果へ移るので、フェーズではなくポップアップに結び付ける）
+- `someoneCorrect` はポップアップのキューに積む（最大5件）。GM 画面はポップアップごとに紙吹雪を噴射する（早押しの正解は直後に問題結果へ移るので、フェーズには結び付けない）
 - `leaderboard` は順位表と参加者一覧の点数、自分の点数を同時に更新する
 - `kicked` で参加者はトークンを消して入室画面に戻る
