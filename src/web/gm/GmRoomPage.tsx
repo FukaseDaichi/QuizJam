@@ -66,7 +66,7 @@ export function GmRoomPage() {
   return (
     <main className="grid min-h-full grid-rows-[auto_1fr_auto] bg-slate-900 text-slate-100">
       <ConnectionBanner connected={state.connected} />
-      {confettiSeed > 0 && state.phase === "question" && <Confetti key={confettiSeed} seed={confettiSeed} />}
+      <Confetti burst={confettiSeed} />
 
       <header className="flex items-center justify-between border-b border-slate-800 px-8 py-4">
         <h1 className="text-brand text-3xl font-black">QuizJam</h1>
