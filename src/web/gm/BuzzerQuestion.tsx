@@ -1,7 +1,9 @@
-import { Mic, Zap } from "lucide-react";
+import { Loader, Mic, Volume2, VolumeX, Zap } from "lucide-react";
 import type { BuzzerView, QuestionView } from "../../shared/messages";
+import { Button } from "../components/Button";
 import { buzzerScreenPromptSizeClass } from "../lib/slideText";
 import { useRevealedCount } from "../lib/useRevealedCount";
+import { unlockAudio, useBuzzerAudio, useQuestionAudio } from "../lib/buzzerAudio";
 
 const STATUS_LABEL: Record<BuzzerView["status"], string> = {
   ready: "読み上げ待ち",
@@ -11,12 +13,15 @@ const STATUS_LABEL: Record<BuzzerView["status"], string> = {
 
 /**
  * GM 画面の早押し出題。問題文は全文を描画しておき、未表示の文字を透明にする（レイアウトが動かない）。
- * 画像はその上に出す。回答中は回答者と待ち行列を問題文の下に出す
+ * 画像はその上に出す。回答中は回答者と待ち行列を問題文の下に出す。
+ * 問読み音声があれば読み込んでおき、早押しの状態に合わせて流す・止める。文字は音声のタイミング表で出す
  */
 export function BuzzerQuestion({ question, buzzer, clockOffsetMs, light, imageHeight }: {
   question: QuestionView; buzzer: BuzzerView | null; clockOffsetMs: number; light: boolean; imageHeight: string;
 }) {
-  const revealed = useRevealedCount(buzzer, clockOffsetMs);
+  const revealed = useRevealedCount(buzzer, question.audio?.revealAtMs, clockOffsetMs);
+  const audio = useQuestionAudio(question.audio?.url);
+  const { blocked } = useBuzzerAudio(audio.buffer, buzzer, clockOffsetMs);
   const chars = Array.from(question.prompt);
   const finished = buzzer?.status === "reading" && revealed >= chars.length;
   const status = !buzzer ? "" : finished ? "読み上げ終了・早押し待ち" : STATUS_LABEL[buzzer.status];
@@ -27,7 +32,12 @@ export function BuzzerQuestion({ question, buzzer, clockOffsetMs, light, imageHe
   return (
     <>
       <div className={`flex items-center justify-between ${muted}`}>
-        <span className="text-xl font-bold">第{question.index + 1}問 / {question.total}問</span>
+        <span className="inline-flex items-center gap-4">
+          <span className="text-xl font-bold">第{question.index + 1}問 / {question.total}問</span>
+          {audio.status === "loading" && <span className="inline-flex items-center gap-1 text-base"><Loader size={18} className="animate-spin" aria-hidden />音声 準備中</span>}
+          {audio.status === "error" && <span className="inline-flex items-center gap-1 text-base text-red-400"><VolumeX size={18} aria-hidden />音声を読み込めません</span>}
+          {blocked && <Button variant="secondary" icon={Volume2} onClick={unlockAudio}>音声を有効にする</Button>}
+        </span>
         <span className="inline-flex items-center gap-2 text-xl font-bold" aria-live="polite"><Zap size={20} aria-hidden />{status}</span>
       </div>
       <div key={question.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">

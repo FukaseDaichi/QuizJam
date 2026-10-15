@@ -152,7 +152,7 @@ function SettingsForm({ settings, send }: { settings: SettingsView; send: (msg: 
       )}
       <Button type="submit" variant="primary" className="mt-5 w-full">適用する</Button>
       <p className="mt-2 text-sm text-slate-400" aria-live="polite">
-        {applied ? "適用しました。" : ""}空欄はセットの設定を使います。{buzzer ? "読み上げ速度は今の問題にもすぐ反映されます" : "今の問題にもすぐ反映され、制限時間は締切が無ければ今から数えます"}
+        {applied ? "適用しました。" : ""}空欄はセットの設定を使います。{buzzer ? "読み上げ速度は今の問題にもすぐ反映されます（音声付きの問題には効きません）" : "今の問題にもすぐ反映され、制限時間は締切が無ければ今から数えます"}
       </p>
       {Object.keys(o).length > 0 && (
         <button type="button" onClick={clearAll} className="mt-2 text-xs font-bold text-slate-400 underline hover:text-slate-200">上書きをすべて解除</button>
