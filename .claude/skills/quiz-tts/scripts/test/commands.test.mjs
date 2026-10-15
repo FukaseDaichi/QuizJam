@@ -231,3 +231,27 @@ test("runJoin: build 済みの問を結合し、WAV が無い問は失敗。2 �
   assert.deepEqual(r2.skipped, ["Q01", "Q02"]);
   assert.equal(joins.length, 2);
 });
+
+test("runBuild: 台本から消えた問は manifest から外し、残った WAV/mp3 を警告する", async () => {
+  const { ctx, logs, root } = makeCtx();
+  writeSet(root, "s", SET);
+  await runBuild(ctx, { setName: "s" });
+  fs.writeFileSync(path.join(root, "voice", "out", "s", "Q03.full.mp3"), "mp3");
+  writeSet(root, "s", SET.replace(/## Q03[\s\S]*$/, ""));
+  const r = await runBuild(ctx, { setName: "s" });
+  assert.deepEqual(r.pruned, ["Q03"]);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "voice", "out", "s", "manifest.json"), "utf8"));
+  assert.deepEqual(Object.keys(manifest.entries), ["Q01", "Q02"]);
+  assert.ok(logs.some((l) => /警告: Q03/.test(l) && /Q03\.wav/.test(l) && /Q03\.full\.mp3/.test(l)));
+});
+
+test("runBuild: --only のときは台本に無い問を manifest から外さない", async () => {
+  const { ctx, root } = makeCtx();
+  writeSet(root, "s", SET);
+  await runBuild(ctx, { setName: "s" });
+  writeSet(root, "s", SET.replace(/## Q03[\s\S]*$/, ""));
+  const r = await runBuild(ctx, { setName: "s", only: ["Q01"] });
+  assert.deepEqual(r.pruned, []);
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "voice", "out", "s", "manifest.json"), "utf8"));
+  assert.ok("Q03" in manifest.entries);
+});

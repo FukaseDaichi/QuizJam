@@ -97,7 +97,7 @@ export async function runBuild(ctx, { setName, only = [], force = false } = {}) 
   const manifestFile = path.join(dir, "manifest.json");
   const manifest = readManifest(manifestFile, setName);
   const { model, voice } = ctx.config;
-  const result = { generated: [], skipped: [], failed: [], warnings: [] };
+  const result = { generated: [], skipped: [], failed: [], warnings: [], pruned: [] };
 
   await runPool(targets, ctx.config.concurrency, async (q) => {
     const style = q.style || ctx.config.style;
@@ -122,8 +122,24 @@ export async function runBuild(ctx, { setName, only = [], force = false } = {}) 
     }
   });
 
+  // 台本から消えた問は manifest から外す（--only で絞ったときは判断できないので触らない）
+  if (only.length === 0) {
+    const ids = new Set(questions.map((q) => q.id));
+    for (const id of Object.keys(manifest.entries)) {
+      if (ids.has(id)) continue;
+      delete manifest.entries[id];
+      result.pruned.push(id);
+      const leftovers = [`${id}.wav`, `${id}.full.mp3`].filter((f) => fs.existsSync(path.join(dir, f)));
+      result.warnings.push(
+        `${id}: 台本に無いので manifest から外しました` +
+          (leftovers.length ? `。残っているファイルを消してください: ${leftovers.map((f) => rel(ctx, path.join(dir, f))).join(", ")}` : ""),
+      );
+    }
+    if (result.pruned.length > 0) writeManifest(manifestFile, manifest);
+  }
+
   // 並列で順序が前後するので ID 順に揃える
-  for (const key of ["generated", "skipped"]) result[key].sort();
+  for (const key of ["generated", "skipped", "pruned"]) result[key].sort();
   result.failed.sort((a, b) => a.id.localeCompare(b.id));
   ctx.log(`生成 ${result.generated.length} / 変更なし ${result.skipped.length} / 失敗 ${result.failed.length}`);
   for (const w of result.warnings) ctx.log(`警告: ${w}`);

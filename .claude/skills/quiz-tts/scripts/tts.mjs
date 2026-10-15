@@ -17,15 +17,27 @@ const USAGE = `使い方: npm run tts -- <コマンド> [引数]
   build <セット名> [--only Qnn] [--force]  台本から各問の WAV を作る（変わった問だけ）
   join <セット名> [--only Qnn]             問題！＋無音＋問題文を結合した mp3 を作る`;
 
+function parseCli() {
+  try {
+    return parseArgs({
+      allowPositionals: true,
+      options: {
+        only: { type: "string", multiple: true },
+        force: { type: "boolean", default: false },
+        text: { type: "string" },
+      },
+    });
+  } catch (err) {
+    console.error(`エラー: ${err.message}`);
+    console.error(USAGE);
+    return null;
+  }
+}
+
 async function main() {
-  const { values, positionals } = parseArgs({
-    allowPositionals: true,
-    options: {
-      only: { type: "string", multiple: true },
-      force: { type: "boolean", default: false },
-      text: { type: "string" },
-    },
-  });
+  const parsed = parseCli();
+  if (!parsed) return 2;
+  const { values, positionals } = parsed;
   const [command, setName] = positionals;
   const config = loadConfig(ROOT);
   const ctx = {

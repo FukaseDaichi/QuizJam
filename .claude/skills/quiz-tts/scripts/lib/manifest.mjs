@@ -20,9 +20,11 @@ export function readManifest(file, set) {
   return m;
 }
 
+/** entries を ID 順に並べて書く（並列生成の完了順で差分が揺れないように） */
 export function writeManifest(file, manifest) {
+  const entries = Object.fromEntries(Object.entries(manifest.entries).sort(([a], [b]) => a.localeCompare(b)));
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + "\n");
+  fs.writeFileSync(file, JSON.stringify({ ...manifest, entries }, null, 2) + "\n");
 }
 
 /** manifest のハッシュが一致し WAV もあるなら飛ばせる */
