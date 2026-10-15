@@ -20,7 +20,7 @@ GM（ゲームマスター）が PC で進行し、参加者がスマートフ�
 ## スコープ外
 
 - アナグラム・早押し以外の問題形式
-- 早押しの読み上げ音声（文字送りの時刻はサーバーが持つので、後から音声を同期して乗せられる）
+- 早押しの読み上げ音声のアプリ内再生（音声ファイル自体は `.claude/skills/quiz-tts/` の Claude Code スキルで生成する。文字送りの時刻はサーバーが持つので、後から音声を同期して乗せられる）
 - 複数 GM の同時操作
 - 参加者のアカウント登録、ゲーム履歴の永続保存
 - チーム対抗
@@ -71,6 +71,8 @@ src/
 test/       Vitest（GameEngine 単体、Room / API 統合、クライアント状態）
 migrations/ D1 スキーマ
 docs/       設計書
+voice/      早押し問読み音声の台本（sets/）と生成物（out/: mondai.wav・manifest.json・Qnn.full.mp3）
+.claude/skills/quiz-tts/  問読み音声を Gemini TTS で生成する Claude Code スキル（アプリからは独立。Node 22、依存なし）
 ```
 
 ## 設計方針: GameEngine の分離

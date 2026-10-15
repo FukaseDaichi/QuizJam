@@ -43,6 +43,18 @@ npm run deploy
 1. Cloudflare ダッシュボード → My Profile → API Tokens で「Edit Cloudflare Workers」テンプレートからトークンを作り、権限に「Account / D1 / Edit」を追加する
 2. GitHub リポジトリの Settings → Secrets and variables → Actions に `CLOUDFLARE_API_TOKEN` として登録する
 
+## 早押しの問読み音声
+
+`voice/sets/<セット名>.md` に台本（問題文と読み）を書き、Gemini 3.8 Flash TTS で読み上げ音声を作る。手順と台本の書き方は `.claude/skills/quiz-tts/SKILL.md`。
+
+```bash
+cp .env.example .env              # GEMINI_API_KEY を入れる
+npm run tts -- mondai             # 「問題！」を 1 回だけ生成
+npm run tts -- build sample       # 台本から各問の WAV
+npm run tts -- join sample        # 問題！＋無音＋問題文 の mp3（ffmpeg が必要）
+npm run test:tts
+```
+
 ## 構成
 
 - Cloudflare Workers（Hono）: 静的配信、HTTP API、WebSocket 転送
