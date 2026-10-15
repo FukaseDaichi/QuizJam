@@ -35,9 +35,11 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
   if (!setName) throw new CommandError("セット名を指定してください: publish <セット名>");
   const setFile = path.resolve(ctx.root, ctx.config.questionSetsDir, `${setName}.json`);
   if (!fs.existsSync(setFile)) throw new CommandError(`問題セットがありません: ${rel(ctx, setFile)}`);
+  // 書き戻す前に、アップロード中に誰かが書き換えていないかを比べる
+  const originalText = fs.readFileSync(setFile, "utf8");
   let set;
   try {
-    set = JSON.parse(fs.readFileSync(setFile, "utf8"));
+    set = JSON.parse(originalText);
   } catch (err) {
     throw new CommandError(`${rel(ctx, setFile)} を読めません: ${err.message}`);
   }
@@ -90,7 +92,14 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
     ctx.log(`${rel(ctx, setFile)} は書き換えていません`);
     return result;
   }
-  fs.writeFileSync(setFile, formatQuestionSet(set));
+  if (fs.readFileSync(setFile, "utf8") !== originalText) {
+    ctx.log(`${rel(ctx, setFile)} が publish の途中で書き換えられたので、上書きしていません（mp3 は上がっています）。もう一度 publish してください`);
+    return { ...result, conflict: true };
+  }
+  // 一時ファイルに書いてから置き換え、書き込み途中で壊れた JSON を残さない
+  const tmp = `${setFile}.tmp`;
+  fs.writeFileSync(tmp, formatQuestionSet(set));
+  fs.renameSync(tmp, setFile);
   ctx.log(`${rel(ctx, setFile)} に ${result.published.length} 問分の音声を書き込みました`);
   ctx.log("管理画面で問題セットの編集画面を開き、「インポート」でこのファイルを読み込んで保存してください");
   return result;

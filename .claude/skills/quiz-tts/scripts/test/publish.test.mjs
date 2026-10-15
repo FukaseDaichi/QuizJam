@@ -151,3 +151,23 @@ test("runPublish: WAV が mp3 より新しい（join していない）問は古
   assert.deepEqual(r.stale, ["Q02"]);
   assert.equal(uploads.length, 0);
 });
+
+test("runPublish: アップロード中に問題セットが書き換えられたら、上書きせずに conflict を返す", async () => {
+  const { ctx, setFile } = setup();
+  const realFetch = ctx.fetch;
+  const edited = formatQuestionSet({ ...SET, questions: [{ ...SET.questions[0], answers: ["え", "エ"] }, SET.questions[1]] });
+  let first = true;
+  ctx.fetch = async (url, init) => {
+    if (first) { first = false; fs.writeFileSync(setFile, edited); }   // 別の人・別のプロセスの編集
+    return realFetch(url, init);
+  };
+  const r = await runPublish(ctx, { setName: "movie", ...target });
+  assert.equal(r.conflict, true);
+  assert.equal(fs.readFileSync(setFile, "utf8"), edited);
+});
+
+test("runPublish: 一時ファイルを経由して書き、成功しても一時ファイルを残さない", async () => {
+  const { ctx, setFile } = setup();
+  await runPublish(ctx, { setName: "movie", ...target });
+  assert.deepEqual(fs.readdirSync(path.dirname(setFile)), ["movie.json"]);
+});
