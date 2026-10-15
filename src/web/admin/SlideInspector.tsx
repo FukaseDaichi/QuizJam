@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { MODE_LABELS, TIMER_MODE_LABELS } from "../lib/labels";
-import { ChevronDown, ChevronRight, Plus, Shuffle, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Shuffle, Volume2, X } from "lucide-react";
 import type { IntroSlide, Question, QuestionSetMode, QuestionSettings, TimerMode } from "../../shared/types";
 import { MAX_CHARS_PER_SECOND, MIN_CHARS_PER_SECOND } from "../../shared/validateQuestionSet";
 import { shuffleAnagram } from "../../shared/anagram";
@@ -137,9 +137,19 @@ export function QuestionInspector({ question, index, mode, baseSettings, passphr
       </div>
 
       {buzzer ? (
-        <Field label="問題文（読み上げる文章）" hint="GM 画面に一文字ずつ表示される。参加者には見せない">
-          <textarea rows={4} value={question.prompt} onChange={(e) => onChange({ prompt: e.target.value })} placeholder="例: 日本で一番高い山は何でしょう？" className={`${textareaClass} text-lg`} />
-        </Field>
+        <div>
+          <Field label="問題文（読み上げる文章）" hint={question.audio ? "問読み音声に合わせて GM 画面に表示される。参加者には見せない" : "GM 画面に一文字ずつ表示される。参加者には見せない"}>
+            {/* 音声のタイミング表は問題文の 1 文字ごとに作ってあるので、音声を付けたまま問題文は変えられない */}
+            <textarea rows={4} value={question.prompt} readOnly={!!question.audio} onChange={(e) => onChange({ prompt: e.target.value })} placeholder="例: 日本で一番高い山は何でしょう？" className={`${textareaClass} text-lg ${question.audio ? "opacity-70" : ""}`} />
+          </Field>
+          {question.audio && (
+            <div className="mt-2 flex items-center gap-3 text-sm text-slate-300">
+              <span className="inline-flex items-center gap-1"><Volume2 size={16} aria-hidden />音声あり</span>
+              <span className="text-xs text-slate-500">問題文を直すには音声を外す（quiz-tts で作り直して publish する）</span>
+              <button type="button" onClick={() => { if (confirm("この問題の音声を外しますか？")) onChange({ audio: undefined }); }} className="ml-auto shrink-0 text-xs font-bold text-slate-400 underline hover:text-red-300">音声を外す</button>
+            </div>
+          )}
+        </div>
       ) : (
         <Field label="出題文" hint="画面に大きく表示されるシャッフル済み文字列。画像に文字が描かれていれば空欄でよい">
           <div className="mt-1 flex gap-2">
@@ -159,13 +169,13 @@ export function QuestionInspector({ question, index, mode, baseSettings, passphr
         </Field>
       )}
 
-      <OverridesPanel key={question.id} index={index} mode={mode} overrides={question.overrides} base={baseSettings} onChange={(overrides) => onChange({ overrides })} />
+      <OverridesPanel key={question.id} index={index} mode={mode} voiced={!!question.audio} overrides={question.overrides} base={baseSettings} onChange={(overrides) => onChange({ overrides })} />
     </div>
   );
 }
 
-function OverridesPanel({ index, mode, overrides, base, onChange }: {
-  index: number; mode: QuestionSetMode; overrides?: Partial<QuestionSettings>; base: QuestionSettings; onChange: (o: Partial<QuestionSettings> | undefined) => void;
+function OverridesPanel({ index, mode, voiced, overrides, base, onChange }: {
+  index: number; mode: QuestionSetMode; voiced: boolean; overrides?: Partial<QuestionSettings>; base: QuestionSettings; onChange: (o: Partial<QuestionSettings> | undefined) => void;
 }) {
   const active = !!overrides && Object.keys(overrides).length > 0;
   const [open, setOpen] = useState(active);
@@ -191,10 +201,13 @@ function OverridesPanel({ index, mode, overrides, base, onChange }: {
             <input type="number" value={o.basePoints ?? ""} placeholder={String(base.basePoints)}
               onChange={(e) => (e.target.value === "" ? set({}, ["basePoints"]) : set({ basePoints: Number(e.target.value) }))} className={inputClass} />
           </Field>
-          <Field label="読み上げ速度" hint={`共通: ${base.charsPerSecond}`}>
-            <input type="number" min={MIN_CHARS_PER_SECOND} max={MAX_CHARS_PER_SECOND} value={o.charsPerSecond ?? ""} placeholder={String(base.charsPerSecond)}
-              onChange={(e) => (e.target.value === "" ? set({}, ["charsPerSecond"]) : set({ charsPerSecond: Number(e.target.value) }))} className={inputClass} />
-          </Field>
+          {/* 音声付きの問題は音声のタイミング表で文字を出すので、読み上げ速度は効かない */}
+          {!voiced && (
+            <Field label="読み上げ速度" hint={`共通: ${base.charsPerSecond}`}>
+              <input type="number" min={MIN_CHARS_PER_SECOND} max={MAX_CHARS_PER_SECOND} value={o.charsPerSecond ?? ""} placeholder={String(base.charsPerSecond)}
+                onChange={(e) => (e.target.value === "" ? set({}, ["charsPerSecond"]) : set({ charsPerSecond: Number(e.target.value) }))} className={inputClass} />
+            </Field>
+          )}
           {active && (
             <button type="button" onClick={() => onChange(undefined)} className="col-span-2 self-start text-xs font-bold text-slate-400 underline hover:text-slate-200">上書きをすべて解除</button>
           )}

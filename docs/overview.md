@@ -20,7 +20,8 @@ GM（ゲームマスター）が PC で進行し、参加者がスマートフ�
 ## スコープ外
 
 - アナグラム・早押し以外の問題形式
-- 早押しの読み上げ音声のアプリ内再生（音声ファイル自体は `.claude/skills/quiz-tts/` の Claude Code スキルで生成する。文字送りの時刻はサーバーが持つので、後から音声を同期して乗せられる）
+- 早押しの問読み音声の参加者端末での再生（音声は GM の PC から会場に流す）、音量調整や音声オフの切り替え
+- 管理画面からの問読み音声のアップロードやタイミングの手直し（音声は quiz-tts の `align`・`publish` で作って JSON で取り込む）
 - 複数 GM の同時操作
 - 参加者のアカウント登録、ゲーム履歴の永続保存
 - チーム対抗
@@ -35,13 +36,13 @@ GM（ゲームマスター）が PC で進行し、参加者がスマートフ�
         ▼
 Cloudflare Workers（1つの Worker）
   ├─ Static Assets: React SPA を配信（SPA フォールバック。/api/* と /ws/* は Worker が先に処理）
-  ├─ HTTP API: 入室、ルーム作成、問題セット CRUD、画像、管理者認証
+  ├─ HTTP API: 入室、ルーム作成、問題セット CRUD、画像、問読み音声、管理者認証
   └─ /ws/room/:code → Durable Object「Room」へ転送
             │
             ├─ Durable Object: Room（ルームごとに1つ、SQLite ストレージ）
             │     GameEngine を保持、WebSocket Hibernation、Alarm で締切と自動削除
             ├─ D1 quizjam-db: 問題セットの永続化
-            └─ R2 quizjam-images: 問題・表紙画像
+            └─ R2 quizjam-images: 問題・表紙画像、早押しの問読み音声
 ```
 
 Durable Objects は無料プランでは SQLite バックエンドのみ利用できるため、Room は `new_sqlite_classes` で定義する。
@@ -71,8 +72,8 @@ src/
 test/       Vitest（GameEngine 単体、Room / API 統合、クライアント状態）
 migrations/ D1 スキーマ
 docs/       設計書
-voice/      早押し問読み音声の台本（sets/）と生成物（out/: mondai.wav・manifest.json・Qnn.full.mp3）
-.claude/skills/quiz-tts/  問読み音声を Gemini TTS で生成する Claude Code スキル（アプリからは独立。Node 22、依存なし）
+voice/      早押し問読み音声の台本（sets/）と生成物（out/: mondai.wav・manifest.json・Qnn.full.mp3・timing.json）
+.claude/skills/quiz-tts/  問読み音声を Gemini TTS で生成し、文字の表示時刻を作ってアプリに上げる Claude Code スキル（Node 22、依存なし。align だけ uv で Python の stable-ts を使う）
 ```
 
 ## 設計方針: GameEngine の分離
@@ -128,4 +129,5 @@ Durable Object はメッセージの受け渡し・永続化・Alarm のみを�
 - `introIndex` や `introSlides`、`buzzer` の無い旧データを復元できること
 - 早押しの表示位置がサーバー受信時刻で確定し、2 人目以降は位置を変えずキューに並ぶこと
 - 早押しの不正解で減点・押せなくなり、次の人へ回ること。キューが空なら続きから再開すること。`judge` の対象が回答中の人と違えば拒否すること
-- 早押しモードで参加者に問題文が届かないこと
+- 早押しモードで参加者に問題文・問読み音声が届かないこと
+- 音声付きの早押しで、押した位置の再生位置が記録され、再開で最後に出ていた文字の表示時刻まで戻ること（全文表示後は戻さない）

@@ -1,7 +1,7 @@
 import type { Answer, BuzzerState, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSet, QuestionSetMode, QuestionSettings } from "../shared/types";
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
-import { promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
+import { isFullyVoiced, playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
 import type { BuzzerView, ErrorCode, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
 
 export interface EngineState {
@@ -62,12 +62,12 @@ export class GameEngine {
   }
 
   static fromSnapshot(state: EngineState): GameEngine {
-    // 旧スナップショットには settingsOverride / introIndex / buzzer が無い
+    // 旧スナップショットには settingsOverride / introIndex / buzzer / buzzer.positionMs が無い
     return new GameEngine({
       ...structuredClone(state),
       settingsOverride: structuredClone(state.settingsOverride ?? {}),
       introIndex: state.introIndex ?? 0,
-      buzzer: structuredClone(state.buzzer ?? null),
+      buzzer: state.buzzer ? { ...structuredClone(state.buzzer), positionMs: state.buzzer.positionMs ?? 0 } : null,
     });
   }
 
@@ -186,7 +186,7 @@ export class GameEngine {
     const slides = set.introSlides ?? [];
     const i = this.s.introIndex;
     const slide: IntroSlideView = i === 0
-      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode }
+      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode, audio: isFullyVoiced(set.mode, set.questions) }
       : { kind: "slide", heading: slides[i - 1].heading, body: slides[i - 1].body, imageUrl: slides[i - 1].imageUrl };
     return { index: i, total: 1 + slides.length, slide };
   }
@@ -199,7 +199,7 @@ export class GameEngine {
     if (this.isBuzzer) {
       // 早押しは締切を持たず、GM の「読み上げ開始」を待つ
       this.s.deadlineAt = null;
-      this.s.buzzer = { status: "ready", readingStartedAt: null, revealedChars: 0, queue: [], lockedOut: [] };
+      this.s.buzzer = { status: "ready", readingStartedAt: null, revealedChars: 0, positionMs: 0, queue: [], lockedOut: [] };
     } else {
       this.s.deadlineAt = settings.timerMode === "fixed" ? now + settings.timerSeconds * 1000 : null;
       this.s.buzzer = null;
@@ -211,7 +211,7 @@ export class GameEngine {
     return { ...resolveSettings(this.s.questionSet, index), ...this.s.settingsOverride };
   }
 
-  /** 早押しモードでは参加者に問題文とヒントを渡さない（スマホはボタン専用機） */
+  /** 早押しモードでは参加者に問題文・ヒント・問読み音声を渡さない（スマホはボタン専用機） */
   currentQuestionView(role: "gm" | "player" = "gm"): QuestionView | null {
     const set = this.s.questionSet;
     if (!set || (this.s.phase !== "question" && this.s.phase !== "questionResult")) return null;
@@ -227,6 +227,7 @@ export class GameEngine {
       background: set.slideBackground,
       deadlineAt: this.s.deadlineAt,
       maxAttempts: this.settings().maxAttempts,
+      audio: this.isBuzzer && role === "gm" ? q.audio : undefined,
     };
   }
 
@@ -358,7 +359,10 @@ export class GameEngine {
   // ---- buzzer mode ----
   private timeline(b: BuzzerState): RevealTimeline {
     const q = this.s.questionSet!.questions[this.s.currentIndex];
-    return { status: b.status, readingStartedAt: b.readingStartedAt, revealedChars: b.revealedChars, promptLength: promptLength(q.prompt), charsPerSecond: this.settings().charsPerSecond };
+    return {
+      status: b.status, readingStartedAt: b.readingStartedAt, revealedChars: b.revealedChars, positionMs: b.positionMs,
+      promptLength: promptLength(q.prompt), charsPerSecond: this.settings().charsPerSecond, revealAtMs: q.audio?.revealAtMs,
+    };
   }
 
   buzzerView(): BuzzerView | null {
@@ -366,7 +370,7 @@ export class GameEngine {
     if (!b || this.s.phase !== "question" || !this.s.questionSet) return null;
     const t = this.timeline(b);
     return {
-      status: t.status, readingStartedAt: t.readingStartedAt, revealedChars: t.revealedChars, promptLength: t.promptLength, charsPerSecond: t.charsPerSecond,
+      status: t.status, readingStartedAt: t.readingStartedAt, revealedChars: t.revealedChars, positionMs: t.positionMs, promptLength: t.promptLength, charsPerSecond: t.charsPerSecond,
       queue: b.queue.map((id) => ({ participantId: id, nickname: this.s.participants[id]?.nickname ?? "?" })),
       lockedOut: [...b.lockedOut],
     };
@@ -378,15 +382,27 @@ export class GameEngine {
     if (!b || this.s.phase !== "question" || b.status !== "ready") throw new Error("not ready to read");
     b.status = "reading";
     b.readingStartedAt = now;
+    b.positionMs = 0;   // 音声は「問題！」の頭から
     return this.buzzerView()!;
   }
 
-  /** 読み上げ中なら区間の起点を今に取り直す。charsPerSecond を変える直前に呼び、表示済みの位置が飛ばないようにする */
+  /**
+   * 読み上げ中なら区間の起点を今に取り直す。charsPerSecond を変える直前に呼び、表示済みの位置が飛ばないようにする。
+   * 音声付きの問題は速さが効かないので取り直さない（区間が変わると GM 画面が音声を流し直し、音が途切れる）
+   */
   rebaseReading(now: number): void {
     const b = this.s.buzzer;
     if (!b || this.s.phase !== "question" || b.status !== "reading") return;
-    b.revealedChars = revealedCount(this.timeline(b), now);
+    if (this.timeline(b).revealAtMs) return;
+    this.freezeAt(b, now);
     b.readingStartedAt = now;
+  }
+
+  /** 区間の起点（表示済み文字数と再生位置）を時刻 now の値にする */
+  private freezeAt(b: BuzzerState, now: number): void {
+    const t = this.timeline(b);
+    b.revealedChars = revealedCount(t, now);
+    b.positionMs = playbackPositionMs(t, now);
   }
 
   /** 参加者の早押し。受信順にキューへ。最初の1人で読み上げが止まる */
@@ -398,7 +414,7 @@ export class GameEngine {
     if (b.lockedOut.includes(participantId)) return { kind: "rejected", code: "locked_out" };
     if (b.queue.includes(participantId)) return { kind: "rejected", code: "already_buzzed" };
     if (b.status === "reading") {
-      b.revealedChars = revealedCount(this.timeline(b), now);
+      this.freezeAt(b, now);
       b.readingStartedAt = null;
       b.status = "paused";
     }
@@ -433,10 +449,17 @@ export class GameEngine {
     return { kind: "wrong", participantId, points };
   }
 
-  /** 回答者が居なくなったら続きから読み上げを再開する。残っていれば次の人が回答中のまま */
+  /**
+   * 回答者が居なくなったら続きから読み上げを再開する。残っていれば次の人が回答中のまま。
+   * 音声付きなら、最後に出ていた文字の表示時刻まで再生位置を戻す（音の途中から始めない）。全文が出ていれば戻さない
+   */
   private resumeIfQueueEmpty(now: number): void {
     const b = this.s.buzzer;
     if (!b || b.status !== "paused" || b.queue.length > 0) return;
+    const t = this.timeline(b);
+    if (t.revealAtMs && b.revealedChars < t.promptLength) {
+      b.positionMs = b.revealedChars > 0 ? t.revealAtMs[b.revealedChars - 1] : 0;
+    }
     b.status = "reading";
     b.readingStartedAt = now;
   }

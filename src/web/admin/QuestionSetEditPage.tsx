@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { Button } from "../components/Button";
 import { AdminGate } from "./AdminGate";
 import { DEFAULT_SETTINGS, resolveSettings } from "../../shared/defaults";
+import { isFullyVoiced } from "../../shared/buzzer";
 import { MAX_INTRO_SLIDES, validateQuestionSetInput, type QuestionSetInput } from "../../shared/validateQuestionSet";
 import { findProblem, introEmpty, isIntroSel, questionIncomplete, type EditorDraft, type Selection } from "../lib/editorChecks";
 import type { IntroSlide, Question, QuestionSet, QuestionSettings } from "../../shared/types";
@@ -234,7 +235,7 @@ function Editor({ passphrase }: { passphrase: string }) {
             <li ref={registerThumb("title")}>
               <button type="button" onClick={() => setSelected("title")} className={thumbClass(selected === "title")} aria-current={selected === "title" ? "true" : undefined}>
                 <span className="w-5 shrink-0 pt-0.5 text-right text-xs font-bold text-slate-400">T</span>
-                <span className="min-w-0 flex-1"><TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} compact /></span>
+                <span className="min-w-0 flex-1"><TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} audio={isFullyVoiced(mode, questions)} compact /></span>
               </button>
             </li>
             {introSlides.map((s, i) => {
@@ -273,7 +274,7 @@ function Editor({ passphrase }: { passphrase: string }) {
         <section className="flex min-h-0 flex-col items-center justify-center gap-4 overflow-y-auto bg-slate-950/60 p-8">
           <div className="w-full max-w-4xl">
             {selected === "title"
-              ? <TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} />
+              ? <TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} audio={isFullyVoiced(mode, questions)} />
               : isIntroSel(selected)
                 ? currentIntro && <IntroSlidePreview heading={currentIntro.heading} body={currentIntro.body} imageUrl={currentIntro.imageUrl} />
                 : current && <QuestionSlidePreview question={current} index={selected} total={total} settings={resolveSettings({ id: "", ...draft }, selected)} background={draft.slideBackground} mode={mode} />}

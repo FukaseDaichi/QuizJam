@@ -14,6 +14,7 @@ import { CorrectPopup } from "./CorrectPopup";
 import { Confetti } from "./Confetti";
 import { GmControlPanel } from "./GmControlPanel";
 import { BuzzerQuestion } from "./BuzzerQuestion";
+import { unlockAudio } from "../lib/buzzerAudio";
 import { buzzerScreenPromptSizeClass } from "../lib/slideText";
 import { isLightColor } from "../lib/color";
 import { IntroSlidePreview, TitleSlidePreview } from "../components/Slides";
@@ -110,7 +111,7 @@ export function GmRoomPage() {
           {state.phase === "intro" && intro && (
             <div key={intro.index} className="qj-pop mx-auto my-auto w-full max-w-5xl">
               {intro.slide.kind === "title"
-                ? <TitleSlidePreview name={intro.slide.name} coverImageUrl={intro.slide.coverImageUrl} questionCount={intro.slide.questionCount} settings={intro.slide.settings} mode={intro.slide.mode} />
+                ? <TitleSlidePreview name={intro.slide.name} coverImageUrl={intro.slide.coverImageUrl} questionCount={intro.slide.questionCount} settings={intro.slide.settings} mode={intro.slide.mode} audio={intro.slide.audio} />
                 : <IntroSlidePreview heading={intro.slide.heading} body={intro.slide.body} imageUrl={intro.slide.imageUrl} />}
             </div>
           )}
@@ -183,12 +184,12 @@ export function GmRoomPage() {
           <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{intro.index + 1 >= intro.total ? "第1問へ" : "次へ"}</Button>
         )}
         {state.phase === "question" && buzzerMode && buzzer?.status === "ready" && (
-          <Button variant="brand" size="lg" icon={Play} onClick={() => send({ type: "startReading" })}>読み上げ開始</Button>
+          <Button variant="brand" size="lg" icon={Play} onClick={() => { unlockAudio(); send({ type: "startReading" }); }}>読み上げ開始</Button>
         )}
         {state.phase === "question" && buzzerMode && buzzer?.status === "paused" && buzzer.queue.length > 0 && (
           <>
-            <Button variant="success" size="lg" icon={Check} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: true })}>正解</Button>
-            <Button variant="danger" size="lg" icon={X} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: false })}>不正解</Button>
+            <Button variant="success" size="lg" icon={Check} onClick={() => { unlockAudio(); send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: true }); }}>正解</Button>
+            <Button variant="danger" size="lg" icon={X} onClick={() => { unlockAudio(); send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: false }); }}>不正解</Button>
           </>
         )}
         {state.phase === "question" && <Button variant="secondary" size="lg" icon={Square} onClick={() => send({ type: "close" })}>締切</Button>}

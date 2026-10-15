@@ -38,3 +38,15 @@ export function requireApiKey(rootDir) {
   }
   return key;
 }
+
+/** publish の送り先。環境変数 → .env の順で QUIZJAM_URL（末尾の / は外す）と ADMIN_PASSPHRASE を探す */
+export function requirePublishEnv(rootDir) {
+  const file = loadEnv(rootDir);
+  const baseUrl = (process.env.QUIZJAM_URL || file.QUIZJAM_URL || "").replace(/\/+$/, "");
+  const passphrase = process.env.ADMIN_PASSPHRASE || file.ADMIN_PASSPHRASE;
+  const missing = [!baseUrl && "QUIZJAM_URL", !passphrase && "ADMIN_PASSPHRASE"].filter(Boolean);
+  if (missing.length > 0) {
+    throw new EnvError(`${missing.join(" と ")} が見つかりません。リポジトリ直下の .env に書いてください（.env.example 参照）`);
+  }
+  return { baseUrl, passphrase };
+}

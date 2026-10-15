@@ -1,6 +1,6 @@
 # 通信プロトコル
 
-入室・ルーム作成・問題セット CRUD・画像は HTTP JSON API。WebSocket はゲーム進行の双方向通信に限定する。
+入室・ルーム作成・問題セット CRUD・画像・問読み音声は HTTP JSON API。WebSocket はゲーム進行の双方向通信に限定する。
 メッセージ型は `src/shared/messages.ts` に置き、サーバーとフロントで共用する。
 
 ## HTTP API
@@ -17,6 +17,8 @@
 | `POST /api/images` | 管理者 | 画像アップロード。本文は画像バイナリ、`Content-Type` で形式を判定。`{ key, url }` を返す |
 | `GET /api/images/:key` | なし | 画像配信（長期キャッシュ） |
 | `DELETE /api/images/:key` | 管理者 | 画像削除 |
+| `POST /api/audio` | 管理者 | 早押しの問読み音声のアップロード。本文は mp3（`Content-Type: audio/mpeg`、2MB まで）。キーは本文の SHA-256 ＋ `.mp3` で、同じキーがあれば保存せずに 200、新しければ 201 で `{ key, url }` を返す |
+| `GET /api/audio/:key` | なし | 問読み音声の配信（長期キャッシュ）。キーは mp3 のハッシュ形式だけ受け付ける |
 | `POST /api/rooms` | なし | ルーム作成。`{ roomCode, gmToken }` を返す。コード衝突時は再試行する |
 | `GET /api/rooms/:code` | なし | ルームの存在確認（404 なら無い） |
 | `POST /api/rooms/:code/join` | なし | 入室。`{ nickname }` を送り `{ participantId, participantToken, roomCode }` を返す |
@@ -46,10 +48,10 @@
 | `close` | GM | なし | 現在の問題を手動締切 |
 | `next` | GM | なし | 次へ。`intro` 中は次の説明スライドか第1問へ、`questionResult` 中は次の問題か最終結果へ |
 | `endGame` | GM | なし | ルームをロビーに戻す |
-| `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き全体。送った内容で置き換え、`{}` で解除。`timerMode` は3モードのいずれか、`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`basePoints` / `wrongPenalty` は 0 以上の整数、`rankBonus` は 0 以上の整数の配列（20個まで）、`charsPerSecond` は 1〜30 の整数。出題中なら締切を合わせ直し、変われば `deadlineSet` を送る。早押しの読み上げ中なら区間の起点を取り直してから適用し、`buzzerUpdated` を送る |
+| `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き全体。送った内容で置き換え、`{}` で解除。`timerMode` は3モードのいずれか、`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`basePoints` / `wrongPenalty` は 0 以上の整数、`rankBonus` は 0 以上の整数の配列（20個まで）、`charsPerSecond` は 1〜30 の整数。出題中なら締切を合わせ直し、変われば `deadlineSet` を送る。早押しの読み上げ中なら区間の起点を取り直してから適用し（問読み音声のある問題では取り直さない）、`buzzerUpdated` を送る |
 | `adjustScore` | GM | `{ participantId, delta }` | 参加者の点数を加減 |
 | `kick` | GM | `{ participantId }` | 参加者を退出させる |
-| `startReading` | GM | なし | 早押しの読み上げ（文字送り）開始。`question` かつ早押しモードかつ `ready` のときだけ |
+| `startReading` | GM | なし | 早押しの読み上げ（文字送り）開始。`question` かつ早押しモードかつ `ready` のときだけ。問読み音声があれば再生位置 0（「問題！」の頭）から |
 | `buzz` | 参加者 | なし | 早押し。受理は `buzzerUpdated` の `queue` で分かる |
 | `judge` | GM | `{ participantId, correct: boolean }` | 回答中の参加者を判定。`participantId` が回答中の人（キューの先頭）と違えば `invalid_state`（ボタンの二度押しで次の人まで判定されないため） |
 
@@ -102,6 +104,7 @@ interface QuestionView {
   background?: string;             // 問題セットの slideBackground
   deadlineAt: number | null;
   maxAttempts: number | null;
+  audio?: { url: string; revealAtMs: number[] };   // 早押しの問読み音声。GM にだけ送る
 }
 
 interface QuestionResultView {
@@ -114,7 +117,7 @@ interface IntroView {
   index: number;                   // 0 がタイトル
   total: number;                   // 1 + introSlides.length
   slide:
-    | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: "anagram" | "buzzer" }
+    | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: "anagram" | "buzzer"; audio: boolean }   // audio: 早押しで全問に問読み音声がある
     | { kind: "slide"; heading?: string; body?: string; imageUrl?: string };
 }
 
@@ -123,6 +126,7 @@ interface BuzzerView {
   status: "ready" | "reading" | "paused";
   readingStartedAt: number | null;
   revealedChars: number;
+  positionMs: number;                                    // 区間の起点での問読み音声の再生位置 (ms)。音声付きの問題でだけ使う
   promptLength: number;                                  // 参加者は本文を受け取らないので長さだけ
   charsPerSecond: number;                                // 今効いている速さ
   queue: { participantId: string; nickname: string }[];  // 先頭が回答中
@@ -163,6 +167,7 @@ interface BuzzerView {
 - クライアントは切断を検知したら指数バックオフ（0.5秒から倍々、最大10秒）で再接続する。タブが再び表示されたときは即座に再接続する。
 - サーバーが `state` を返すためクライアント側の差分管理は不要。
 - GM のブラウザが切断してもゲームは止めない。タイマーはサーバーで動き続け、再接続すれば `state` で復元する。
+- 早押しの問読み音声は `BuzzerView` だけから再生位置（`positionMs ＋ (補正したサーバーの今 − readingStartedAt)`）を求めて流すので、再接続後も続きから流れる。GM 画面を再読み込みしたときはブラウザの自動再生の制限で止まるので、GM 画面の「音声を有効にする」で流す。
 - Durable Object が再起動しても状態は SQLite に保存済みで、接続者が再接続すれば継続する。
 
 ## エラー処理

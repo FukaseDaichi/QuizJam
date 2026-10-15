@@ -1,5 +1,6 @@
-import type { IntroSlide, Question, QuestionSet, QuestionSetMode, QuestionSettings } from "./types";
+import type { IntroSlide, Question, QuestionAudio, QuestionSet, QuestionSetMode, QuestionSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./defaults";
+import { promptLength } from "./buzzer";
 
 export type QuestionSetInput = Omit<QuestionSet, "id">;
 
@@ -16,6 +17,25 @@ export function isValidCharsPerSecond(x: unknown): x is number {
 /** 画像 URL は自サーバーの /api/images/<key> か https のみ許可する */
 export function isValidImageUrl(x: unknown): x is string {
   return typeof x === "string" && x.length > 0 && x.length <= 500 && (/^\/api\/images\/[A-Za-z0-9._-]+$/.test(x) || /^https:\/\//.test(x));
+}
+
+/** 音声 URL は自サーバーの /api/audio/<key> か https のみ許可する */
+export function isValidAudioUrl(x: unknown): x is string {
+  return typeof x === "string" && x.length > 0 && x.length <= 500 && (/^\/api\/audio\/[A-Za-z0-9._-]+$/.test(x) || /^https:\/\//.test(x));
+}
+
+export const MAX_REVEAL_AT_MS = 600_000;
+
+/** revealAtMs は問題文の文字数（コードポイント）と同じ長さで、0〜MAX_REVEAL_AT_MS の整数が前の要素以上で並ぶ */
+function validateAudio(x: unknown, prompt: string): QuestionAudio | { error: string } {
+  if (typeof x !== "object" || x === null || Array.isArray(x)) return { error: "audio invalid" };
+  const o = x as Record<string, unknown>;
+  if (!isValidAudioUrl(o.url)) return { error: "audio.url invalid" };
+  const r = o.revealAtMs;
+  const ok = Array.isArray(r) && r.length === promptLength(prompt)
+    && r.every((t, i) => Number.isInteger(t) && t >= 0 && t <= MAX_REVEAL_AT_MS && (i === 0 || t >= r[i - 1]));
+  if (!ok) return { error: "audio.revealAtMs invalid" };
+  return { url: o.url, revealAtMs: r as number[] };
 }
 
 export function isValidColor(x: unknown): x is string {
@@ -111,6 +131,13 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       if ("error" in v) return { error: `questions[${i}].${v.error}` };
       overrides = v;
     }
+    // 問読み音声は早押しでだけ使う。ほかのモードでは保存しない
+    let audio: QuestionAudio | undefined;
+    if (mode === "buzzer" && qq.audio !== undefined && qq.audio !== null) {
+      const a = validateAudio(qq.audio, prompt);
+      if ("error" in a) return { error: `questions[${i}].${a.error}` };
+      audio = a;
+    }
     questions.push({
       id: typeof qq.id === "string" && qq.id ? qq.id : crypto.randomUUID(),
       type: "anagram",
@@ -120,6 +147,7 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       imageUrl,
       explanationImageUrl,
       overrides,
+      audio,
     });
   }
   return {

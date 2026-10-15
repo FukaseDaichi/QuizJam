@@ -174,7 +174,7 @@ describe("live settings during a question", () => {
 });
 
 describe("intro slides", () => {
-  const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "テスト", questionCount: 1, settings: DEFAULT_SETTINGS, mode: "anagram" } };
+  const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "テスト", questionCount: 1, settings: DEFAULT_SETTINGS, mode: "anagram", audio: false } };
 
   it("introStarted sets phase and intro and clears question state", () => {
     let s = applyServerMessage(withState(), { type: "questionStarted", question: { index: 0, total: 1, mode: "anagram" as const, prompt: "x", deadlineAt: null, maxAttempts: 3 } }, T0);
@@ -218,7 +218,7 @@ describe("unknown server messages", () => {
 
 describe("buzzer mode", () => {
   const question = { index: 0, total: 2, mode: "buzzer" as const, prompt: "", deadlineAt: null, maxAttempts: 3 };
-  const buzzer = { status: "reading" as const, readingStartedAt: T0, revealedChars: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [] };
+  const buzzer = { status: "reading" as const, readingStartedAt: T0, revealedChars: 0, positionMs: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [] };
 
   it("state carries the buzzer view", () => {
     const s = applyServerMessage(initialClientState, { ...baseState, phase: "question", question, buzzer }, T0);
@@ -240,7 +240,7 @@ describe("buzzer mode", () => {
   });
 
   it("introStarted and finalResult clear the buzzer view", () => {
-    const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "早押し", questionCount: 1, settings: DEFAULT_SETTINGS, mode: "buzzer" } };
+    const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "早押し", questionCount: 1, settings: DEFAULT_SETTINGS, mode: "buzzer", audio: false } };
     let s = applyServerMessage(withState(), { type: "buzzerUpdated", buzzer }, T0);
     expect(applyServerMessage(s, { type: "introStarted", intro }, T0).buzzer).toBeNull();
     s = applyServerMessage(s, { type: "finalResult", entries: [] }, T0);

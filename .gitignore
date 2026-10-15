@@ -6,3 +6,4 @@ dist
 .env
 voice/out/*/Q*.wav
 voice/out/voices/
+.claude/skills/quiz-tts/align/.venv/
