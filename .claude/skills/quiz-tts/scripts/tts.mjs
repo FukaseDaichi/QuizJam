@@ -6,7 +6,7 @@ import { requireApiKey, EnvError } from "./lib/env.mjs";
 import { loadConfig, ConfigError } from "./lib/config.mjs";
 import { synthesize } from "./lib/gemini.mjs";
 import { ScriptError } from "./lib/script.mjs";
-import { CommandError, runMondai, runVoices } from "./lib/commands.mjs";
+import { CommandError, runMondai, runVoices, runBuild } from "./lib/commands.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -50,9 +50,13 @@ async function main() {
       withKey();
       await runMondai(ctx, { force: values.force });
       return 0;
-    case "build":
+    case "build": {
+      withKey();
+      const r = await runBuild(ctx, { setName, only: values.only ?? [], force: values.force });
+      return r.failed.length > 0 ? 1 : 0;
+    }
     case "join":
-      console.error(`${command} は未実装です`);
+      console.error("join は未実装です");
       return 2;
     default:
       console.error(USAGE);
