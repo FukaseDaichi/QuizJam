@@ -20,8 +20,14 @@ describe("audioStartMs", () => {
     expect(audioStartMs(null, T0)).toBeNull();
   });
 
-  it("does not play a resumed segment once the whole prompt was shown", () => {
-    expect(audioStartMs(view({ revealedChars: 5, positionMs: 5000 }), T0 + 100)).toBeNull();
+  it("plays the rest of the audio after the whole prompt is shown while the audio has not ended", () => {
+    // 最後の文字は読み始めに出るので、全文が出た後もその文字の音が残っている
+    expect(audioStartMs(view({ revealedChars: 5, positionMs: 3100 }), T0 + 100, 0, 4000)).toBe(3200);
+  });
+
+  it("does not play once the playback position reaches the end of the audio", () => {
+    expect(audioStartMs(view({ revealedChars: 5, positionMs: 5000 }), T0 + 100, 0, 4000)).toBeNull();
+    expect(audioStartMs(view({ positionMs: 3900 }), T0 + 100, 0, 4000)).toBeNull();
   });
 
   it("treats a clock earlier than readingStartedAt as the segment start", () => {

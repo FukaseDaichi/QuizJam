@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CommandError, rel, setDir } from "./commands.mjs";
+import { CommandError, mondaiPath, rel, setDir } from "./commands.mjs";
+import { needsJoin } from "./join.mjs";
 import { isTimingFresh, readTiming, sha256File } from "./align.mjs";
 
 /** JSON の値を 1 行で書く（{ "k": v } と [a, b]） */
@@ -34,9 +35,11 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
   if (!setName) throw new CommandError("セット名を指定してください: publish <セット名>");
   const setFile = path.resolve(ctx.root, ctx.config.questionSetsDir, `${setName}.json`);
   if (!fs.existsSync(setFile)) throw new CommandError(`問題セットがありません: ${rel(ctx, setFile)}`);
+  // 書き戻す前に、アップロード中に誰かが書き換えていないかを比べる
+  const originalText = fs.readFileSync(setFile, "utf8");
   let set;
   try {
-    set = JSON.parse(fs.readFileSync(setFile, "utf8"));
+    set = JSON.parse(originalText);
   } catch (err) {
     throw new CommandError(`${rel(ctx, setFile)} を読めません: ${err.message}`);
   }
@@ -53,7 +56,9 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
     const prompt = typeof q.prompt === "string" ? q.prompt.trim() : "";
     const entry = timing.entries[q.id];
     const sha = fs.existsSync(mp3) ? sha256File(mp3) : null;
-    if (!sha || !isTimingFresh(entry, prompt, sha)) {
+    // WAV（git 管理外）が手元にあれば、mp3 が今の WAV から作られているかも確かめる
+    const sources = [path.join(dir, `${q.id}.wav`), mondaiPath(ctx)].filter((f) => fs.existsSync(f));
+    if (!sha || needsJoin(mp3, sources) || !isTimingFresh(entry, prompt, sha)) {
       result.stale.push(q.id);
       continue;
     }
@@ -87,7 +92,14 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
     ctx.log(`${rel(ctx, setFile)} は書き換えていません`);
     return result;
   }
-  fs.writeFileSync(setFile, formatQuestionSet(set));
+  if (fs.readFileSync(setFile, "utf8") !== originalText) {
+    ctx.log(`${rel(ctx, setFile)} が publish の途中で書き換えられたので、上書きしていません（mp3 は上がっています）。もう一度 publish してください`);
+    return { ...result, conflict: true };
+  }
+  // 一時ファイルに書いてから置き換え、書き込み途中で壊れた JSON を残さない
+  const tmp = `${setFile}.tmp`;
+  fs.writeFileSync(tmp, formatQuestionSet(set));
+  fs.renameSync(tmp, setFile);
   ctx.log(`${rel(ctx, setFile)} に ${result.published.length} 問分の音声を書き込みました`);
   ctx.log("管理画面で問題セットの編集画面を開き、「インポート」でこのファイルを読み込んで保存してください");
   return result;

@@ -96,7 +96,7 @@ async function main() {
     case "publish": {
       const target = setName ? requirePublishEnv(ROOT) : {};
       const r = await runPublish({ ...ctx, fetch }, { setName, ...target });
-      return r.stale.length > 0 || r.failed.length > 0 ? 1 : 0;
+      return r.stale.length > 0 || r.failed.length > 0 || r.conflict ? 1 : 0;
     }
     default:
       console.error(USAGE);

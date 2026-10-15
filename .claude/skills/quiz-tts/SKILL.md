@@ -20,7 +20,10 @@ description: 早押しクイズの問題文から問読み（読み上げ）音�
 8. 台本・`voice/out/<セット名>/manifest.json`・`Qnn.full.mp3`・`timing.json` をコミットする（`Qnn.wav` は .gitignore 済み）
 9. アプリに入れるときだけ: ユーザーに確認してから `npm run tts -- publish <セット名>`（デプロイ済みのアプリに mp3 を上げ、`question-sets/<セット名>.json` に `audio` を書き込む。`.env` に `QUIZJAM_URL` と `ADMIN_PASSPHRASE` が要る）。書き込んだ JSON をコミットし、管理画面で問題セットの編集画面から「インポート」して保存してもらう。mp3 は publish した先の R2 にしか無いので、取り込む先と同じアプリ（`QUIZJAM_URL`）に publish する
 
-問題セットの `prompt` を直したら、その問は `align` → `publish` をやり直す（タイミング表は問題文の 1 文字ごとに作るため）。
+直したあとのやり直し:
+
+- 問題セットの `prompt`（表示する問題文）だけを直したら、その問は `align` → `preview` → `publish`（タイミング表は問題文の 1 文字ごとに作るため）
+- 台本の `読み` を直したら、`build` → `join` → `align` → `preview` → `publish`（音声が変わるため）。`align` と `publish` は、mp3 が今の WAV や `mondai.wav` より古い（`join` していない）問を止める
 
 ## 台本ファイルの形
 
@@ -74,7 +77,7 @@ npm run test:tts                                        # スクリプトのテ�
 - 声を変えたいとき: `voices` で聴き比べ → `voice/config.json` の `voice` を変更 → `mondai --force` → `build <セット名>`（ハッシュに声が入っているので全問が再生成される）→ `join`
 - 間の長さは `voice/config.json` の `pauseMs`（ms）。変えたら mp3 を消して `join` → `align`
 - `align` は台本の読み（数字はかなに直す）を `Qnn.wav` に強制アライメントし（`align/` の Python。stable-ts + Whisper small）、間の後の読み始めを無音の明けに寄せ、問題セットの問題文と文字単位で対応づける。時刻は `Qnn.full.mp3` の頭（「問題！」の頭）からの ms。初回は uv が Python 環境（torch などで数百 MB。Linux では GPU 版の torch が入って数 GB になることがある）を作り、Whisper small（約 460 MB）をダウンロードする。uv が無ければ終了コード 2
-- `publish` は timing.json が古い・無い問が 1 つでもあれば何も上げずに終了コード 1。アップロードに失敗した問があれば JSON は書き換えない
+- `publish` は timing.json が古い・無い問が 1 つでもあれば何も上げずに終了コード 1。アップロードに失敗した問があれば JSON は書き換えない。publish の途中で問題セット JSON が書き換えられた場合も上書きせずに終了コード 1（もう一度 publish する）
 
 ## 設定（voice/config.json）
 

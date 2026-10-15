@@ -140,3 +140,34 @@ test("runPublish: 応答の url が無いか、上げた mp3 の SHA-256 と合�
   assert.equal(r2.failed.length, 2);
   assert.equal(fs.readFileSync(setFile, "utf8"), before);
 });
+
+test("runPublish: WAV が mp3 より新しい（join していない）問は古いとみなし、何も上げない", async () => {
+  const { ctx, uploads, dir } = setup();
+  const wav = path.join(dir, "Q02.wav");
+  fs.writeFileSync(wav, "wav");
+  const future = new Date(Date.now() + 60_000);
+  fs.utimesSync(wav, future, future);
+  const r = await runPublish(ctx, { setName: "movie", ...target });
+  assert.deepEqual(r.stale, ["Q02"]);
+  assert.equal(uploads.length, 0);
+});
+
+test("runPublish: アップロード中に問題セットが書き換えられたら、上書きせずに conflict を返す", async () => {
+  const { ctx, setFile } = setup();
+  const realFetch = ctx.fetch;
+  const edited = formatQuestionSet({ ...SET, questions: [{ ...SET.questions[0], answers: ["え", "エ"] }, SET.questions[1]] });
+  let first = true;
+  ctx.fetch = async (url, init) => {
+    if (first) { first = false; fs.writeFileSync(setFile, edited); }   // 別の人・別のプロセスの編集
+    return realFetch(url, init);
+  };
+  const r = await runPublish(ctx, { setName: "movie", ...target });
+  assert.equal(r.conflict, true);
+  assert.equal(fs.readFileSync(setFile, "utf8"), edited);
+});
+
+test("runPublish: 一時ファイルを経由して書き、成功しても一時ファイルを残さない", async () => {
+  const { ctx, setFile } = setup();
+  await runPublish(ctx, { setName: "movie", ...target });
+  assert.deepEqual(fs.readdirSync(path.dirname(setFile)), ["movie.json"]);
+});
