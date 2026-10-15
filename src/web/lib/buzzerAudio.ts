@@ -54,8 +54,8 @@ export function useBuzzerAudio(buffer: AudioBuffer | null, buzzer: BuzzerView | 
     const c = audioContext();
     // 出力の遅れ（Bluetooth では 0.1〜0.3 秒）の分だけ先から流す。取れない環境では 0
     const latencyMs = ((c.outputLatency || c.baseLatency || 0) as number) * 1000;
-    const startMs = audioStartMs(buzzer, Date.now() + clockOffsetMs, latencyMs);
-    if (startMs === null || startMs / 1000 >= buffer.duration) return;
+    const startMs = audioStartMs(buzzer, Date.now() + clockOffsetMs, latencyMs, buffer.duration * 1000);
+    if (startMs === null) return;
     const source = c.createBufferSource();
     source.buffer = buffer;
     source.connect(c.destination);
@@ -68,6 +68,6 @@ export function useBuzzerAudio(buffer: AudioBuffer | null, buzzer: BuzzerView | 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buffer, ctxState, buzzer?.status, buzzer?.readingStartedAt, buzzer?.positionMs, buzzer?.revealedChars, buzzer?.promptLength, clockOffsetMs]);
 
-  const wantsToPlay = !!buffer && audioStartMs(buzzer, Date.now() + clockOffsetMs) !== null;
+  const wantsToPlay = !!buffer && audioStartMs(buzzer, Date.now() + clockOffsetMs, 0, buffer.duration * 1000) !== null;
   return { blocked: wantsToPlay && ctxState !== "running" };
 }
