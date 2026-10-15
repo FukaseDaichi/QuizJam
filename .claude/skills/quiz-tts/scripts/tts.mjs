@@ -8,6 +8,9 @@ import { synthesize } from "./lib/gemini.mjs";
 import { ScriptError } from "./lib/script.mjs";
 import { ffmpegAvailable, joinQuestion } from "./lib/join.mjs";
 import { CommandError, runMondai, runVoices, runBuild, runJoin } from "./lib/commands.mjs";
+import { runAlign } from "./lib/align.mjs";
+import { detectSilences } from "./lib/silence.mjs";
+import { alignWords, uvAvailable } from "./lib/whisper.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -15,7 +18,8 @@ const USAGE = `使い方: npm run tts -- <コマンド> [引数]
   voices [--text 文]                       候補の声で聴き比べ用の音声を作る
   mondai [--force]                         「問題！」を作る（既にあれば何もしない）
   build <セット名> [--only Qnn] [--force]  台本から各問の WAV を作る（変わった問だけ）
-  join <セット名> [--only Qnn]             問題！＋無音＋問題文を結合した mp3 を作る`;
+  join <セット名> [--only Qnn]             問題！＋無音＋問題文を結合した mp3 を作る
+  align <セット名> [--only Qnn] [--force]  音声から問題文の各文字の表示時刻を作る（timing.json）`;
 
 function parseCli() {
   try {
@@ -70,6 +74,12 @@ async function main() {
     }
     case "join": {
       const r = await runJoin(ctx, { setName, only: values.only ?? [] });
+      return r.failed.length > 0 ? 1 : 0;
+    }
+    case "align": {
+      Object.assign(ctx, { uvAvailable, alignWords, detectSilences });
+      const r = await runAlign(ctx, { setName, only: values.only ?? [], force: values.force });
+      if (r.noUv) return 2;
       return r.failed.length > 0 ? 1 : 0;
     }
     default:

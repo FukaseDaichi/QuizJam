@@ -20,3 +20,9 @@ test("CLI: コマンド無しは使い方を出して終了コード 2", () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /使い方:/);
 });
+
+test("CLI: align はセット名が無ければエラーで終了コード 1", () => {
+  const r = run("align");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /セット名を指定してください: align/);
+});

@@ -44,3 +44,8 @@ test("loadConfig: 壊れた JSON は ConfigError", () => {
   fs.writeFileSync(path.join(dir, "voice", "config.json"), "{ not json");
   assert.throws(() => loadConfig(dir), ConfigError);
 });
+
+test("validateConfig: questionSetsDir は既定で question-sets、空文字はエラー", () => {
+  assert.equal(validateConfig({}).questionSetsDir, "question-sets");
+  assert.throws(() => validateConfig({ questionSetsDir: "" }), ConfigError);
+});
