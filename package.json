@@ -14,7 +14,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p test/tsconfig.json --noEmit",
     "cf-typegen": "wrangler types ./src/worker/worker-configuration.d.ts",
     "db:migrate:local": "wrangler d1 migrations apply quizjam-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply quizjam-db --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply quizjam-db --remote",
+    "tts": "node .claude/skills/quiz-tts/scripts/tts.mjs",
+    "test:tts": "node --test \".claude/skills/quiz-tts/scripts/test/*.test.mjs\""
   },
   "keywords": [],
   "author": "",

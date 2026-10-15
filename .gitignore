@@ -3,3 +3,6 @@ dist
 .wrangler
 .dev.vars
 *.log
+.env
+voice/out/*/Q*.wav
+voice/out/voices/
