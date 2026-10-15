@@ -26,6 +26,13 @@ export interface Question {
   imageUrl?: string;           // /api/images/<key>（R2 に保存した問題画像）
   explanationImageUrl?: string; // 問題結果画面に映す解説画像。出題中は参加者に送らない
   overrides?: Partial<QuestionSettings>;
+  audio?: QuestionAudio;       // 早押しの問読み音声。早押しモードでだけ使う
+}
+
+/** 問読み音声と、問題文の各文字を出す時刻（quiz-tts の align・publish が作る） */
+export interface QuestionAudio {
+  url: string;                 // /api/audio/<key>（R2 に保存した mp3）か https
+  revealAtMs: number[];        // 問題文の各文字（コードポイント）を出す時刻。音声の頭からの ms。前の要素以上
 }
 
 /** ゲーム冒頭、タイトルの後に映す説明スライド。見出し・本文・画像のどれか1つは必須 */
@@ -89,6 +96,7 @@ export interface BuzzerState {
   status: BuzzerStatus;
   readingStartedAt: number | null;  // reading のとき、今の区間を読み始めたサーバー時刻 (UNIX ms)
   revealedChars: number;            // 区間の起点。止めたときまでに表示済みの文字数
-  queue: string[];                  // 早押しキュー（参加者 ID、サーバー受信順）。先頭が回答中
+  positionMs: number;               // 区間の起点での音声の再生位置 (ms)。音声付きの問題でだけ使う
+  queue: string[];                 // 早押しキュー（参加者 ID、サーバー受信順）。先頭が回答中
   lockedOut: string[];              // この問題で不正解になり、押せなくなった参加者 ID
 }

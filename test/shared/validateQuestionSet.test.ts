@@ -128,3 +128,47 @@ describe("validateQuestionSetInput buzzer mode", () => {
     expect(validateQuestionSetInput({ ...base, questions: [{ prompt: "x", answers: ["y"], overrides: { charsPerSecond: 40 } }] })).toEqual({ error: "questions[0].settings.charsPerSecond invalid" });
   });
 });
+
+describe("validateQuestionSetInput question audio", () => {
+  const audio = { url: "/api/audio/0a1b.mp3", revealAtMs: [2000, 2300, 2300] };
+  const buzzerSet = (q: Record<string, unknown>) => validateQuestionSetInput({ ...base, mode: "buzzer", questions: [{ prompt: "あいう", answers: ["え"], ...q }] });
+
+  it("keeps a valid audio on a buzzer question", () => {
+    const v = buzzerSet({ audio });
+    expect("error" in v ? v.error : v.questions[0].audio).toEqual(audio);
+  });
+
+  it("accepts an https audio URL", () => {
+    const v = buzzerSet({ audio: { ...audio, url: "https://example.com/q.mp3" } });
+    expect("error" in v ? v.error : v.questions[0].audio?.url).toBe("https://example.com/q.mp3");
+  });
+
+  it("matches revealAtMs against the trimmed prompt in code points", () => {
+    const v = buzzerSet({ prompt: " a😀b ", audio });
+    expect("error" in v ? v.error : v.questions[0].audio?.revealAtMs).toEqual(audio.revealAtMs);
+  });
+
+  it("rejects an audio URL outside /api/audio/ and https", () => {
+    expect(buzzerSet({ audio: { ...audio, url: "/api/images/a.mp3" } })).toEqual({ error: "questions[0].audio.url invalid" });
+    expect(buzzerSet({ audio: { ...audio, url: "javascript:alert(1)" } })).toEqual({ error: "questions[0].audio.url invalid" });
+  });
+
+  it("rejects revealAtMs that does not fit the prompt", () => {
+    const bad = (revealAtMs: unknown) => buzzerSet({ audio: { ...audio, revealAtMs } });
+    expect(bad([2000, 2300])).toEqual({ error: "questions[0].audio.revealAtMs invalid" });
+    expect(bad([2000, 1999, 2300])).toEqual({ error: "questions[0].audio.revealAtMs invalid" });
+    expect(bad([2000, 2300.5, 2400])).toEqual({ error: "questions[0].audio.revealAtMs invalid" });
+    expect(bad([-1, 2300, 2400])).toEqual({ error: "questions[0].audio.revealAtMs invalid" });
+    expect(bad([2000, 2300, 600_001])).toEqual({ error: "questions[0].audio.revealAtMs invalid" });
+    expect(bad("2000,2300,2400")).toEqual({ error: "questions[0].audio.revealAtMs invalid" });
+  });
+
+  it("rejects an audio that is not an object", () => {
+    expect(buzzerSet({ audio: "/api/audio/a.mp3" })).toEqual({ error: "questions[0].audio invalid" });
+  });
+
+  it("drops the audio outside buzzer mode", () => {
+    const v = validateQuestionSetInput({ ...base, questions: [{ prompt: "あいう", answers: ["え"], audio }] });
+    expect("error" in v ? v.error : v.questions[0].audio).toBeUndefined();
+  });
+});

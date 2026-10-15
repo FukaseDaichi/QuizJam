@@ -574,7 +574,7 @@ describe("GameEngine buzzer mode", () => {
     expect(view.mode).toBe("buzzer");
     expect(view.deadlineAt).toBeNull();
     expect(e.buzzerView()).toEqual({
-      status: "ready", readingStartedAt: null, revealedChars: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [],
+      status: "ready", readingStartedAt: null, revealedChars: 0, positionMs: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [],
     });
     expect(e.reconcileDeadline(T0 + 1000)).toEqual({ changed: false, deadlineAt: null });
   });
@@ -752,5 +752,94 @@ describe("GameEngine buzzer judge target", () => {
     expect(e.getParticipant("p1")?.score).toBe(0);
     expect(e.buzzerView()).toMatchObject({ status: "paused", queue: [{ participantId: "p1", nickname: "みさき" }] });
     expect(e.judge("p1", true, T0 + 3000)).toMatchObject({ kind: "correct", participantId: "p1", points: 100 });
+  });
+});
+
+describe("GameEngine buzzer mode with question audio", () => {
+  // 「問題！」と間の 2.0 秒の後に 5 文字が出る。2・3 文字目は同時
+  const AUDIO = { url: "/api/audio/a.mp3", revealAtMs: [2000, 2300, 2300, 2700, 3000] };
+  function makeAudioSet(): QuestionSet {
+    return {
+      id: "bza", name: "音声付き早押し", mode: "buzzer",
+      settings: { ...DEFAULT_SETTINGS, charsPerSecond: 5, wrongPenalty: 20 },
+      questions: [
+        { id: "a1", type: "anagram", prompt: "あいうえお", answers: ["か"], audio: AUDIO },
+        { id: "a2", type: "anagram", prompt: "音声なし", answers: ["き"] },
+      ],
+    };
+  }
+  let e: GameEngine;
+  beforeEach(() => {
+    e = GameEngine.create("BZA001");
+    e.addParticipant("p1", "みさき");
+    e.addParticipant("p2", "たろう");
+    startQuestions(e, makeAudioSet(), false, T0);
+  });
+
+  it("startReading plays from the head of the audio", () => {
+    expect(e.startReading(T0)).toMatchObject({ status: "reading", readingStartedAt: T0, revealedChars: 0, positionMs: 0 });
+  });
+
+  it("a buzz records the playback position and the chars revealed by the timing table", () => {
+    e.startReading(T0);
+    e.buzz("p1", T0 + 2500);
+    expect(e.buzzerView()).toMatchObject({ status: "paused", readingStartedAt: null, revealedChars: 3, positionMs: 2500 });
+  });
+
+  it("resuming rewinds the playback to the reveal time of the last shown char and keeps the count", () => {
+    e.startReading(T0);
+    e.buzz("p1", T0 + 2500);
+    e.judge("p1", false, T0 + 6000);
+    expect(e.buzzerView()).toMatchObject({ status: "reading", readingStartedAt: T0 + 6000, revealedChars: 3, positionMs: 2300 });
+    e.buzz("p2", T0 + 6450);                     // 2300 + 450 = 2750 → 4 文字
+    expect(e.buzzerView()).toMatchObject({ revealedChars: 4, positionMs: 2750 });
+  });
+
+  it("a buzz during the cue resumes from the head of the audio", () => {
+    e.startReading(T0);
+    e.buzz("p1", T0 + 1000);
+    expect(e.buzzerView()).toMatchObject({ revealedChars: 0, positionMs: 1000 });
+    e.judge("p1", false, T0 + 3000);
+    expect(e.buzzerView()).toMatchObject({ status: "reading", revealedChars: 0, positionMs: 0 });
+  });
+
+  it("does not rewind once the whole prompt is shown", () => {
+    e.startReading(T0);
+    e.buzz("p1", T0 + 5000);
+    e.judge("p1", false, T0 + 8000);
+    expect(e.buzzerView()).toMatchObject({ status: "reading", revealedChars: 5, positionMs: 5000 });
+  });
+
+  it("kicking the answerer resumes with the same rewind", () => {
+    e.startReading(T0);
+    e.buzz("p1", T0 + 2800);
+    e.removeParticipant("p1", T0 + 4000);
+    expect(e.buzzerView()).toMatchObject({ status: "reading", readingStartedAt: T0 + 4000, revealedChars: 4, positionMs: 2700 });
+  });
+
+  it("a charsPerSecond change rebases the playback position but does not change the pace", () => {
+    e.startReading(T0);
+    e.rebaseReading(T0 + 2500);
+    e.setSettingsOverride({ charsPerSecond: 30 });
+    expect(e.buzzerView()).toMatchObject({ readingStartedAt: T0 + 2500, revealedChars: 3, positionMs: 2500 });
+    e.buzz("p1", T0 + 2700);                     // 2700ms → 4 文字（30 文字/秒なら全部出ている）
+    expect(e.buzzerView()).toMatchObject({ revealedChars: 4, positionMs: 2700 });
+  });
+
+  it("a question without audio in the same set still uses charsPerSecond", () => {
+    e.startReading(T0);
+    e.buzz("p1", T0 + 100);
+    e.judge("p1", true, T0 + 200);
+    e.next(T0 + 300);
+    e.startReading(T0 + 1000);
+    e.buzz("p2", T0 + 1400);                     // 0.4s × 5 = 2 文字
+    expect(e.buzzerView()).toMatchObject({ revealedChars: 2 });
+  });
+
+  it("restores a buzzer snapshot without positionMs as 0", () => {
+    e.startReading(T0);
+    const snap = JSON.parse(JSON.stringify(e.snapshot())) as EngineState;
+    delete (snap.buzzer as Partial<NonNullable<EngineState["buzzer"]>>).positionMs;
+    expect(GameEngine.fromSnapshot(snap).buzzerView()).toMatchObject({ status: "reading", positionMs: 0 });
   });
 });

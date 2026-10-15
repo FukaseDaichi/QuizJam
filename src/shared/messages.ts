@@ -116,6 +116,7 @@ export interface BuzzerView {
   status: BuzzerStatus;
   readingStartedAt: number | null;
   revealedChars: number;
+  positionMs: number;                                    // 区間の起点での音声の再生位置 (ms)。音声付きの問題でだけ使う
   promptLength: number;                                  // 参加者は本文を受け取らないので長さだけ
   charsPerSecond: number;                                // 今効いている速さ
   queue: { participantId: string; nickname: string }[];  // 先頭が回答中

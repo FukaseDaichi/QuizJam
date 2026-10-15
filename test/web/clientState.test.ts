@@ -218,7 +218,7 @@ describe("unknown server messages", () => {
 
 describe("buzzer mode", () => {
   const question = { index: 0, total: 2, mode: "buzzer" as const, prompt: "", deadlineAt: null, maxAttempts: 3 };
-  const buzzer = { status: "reading" as const, readingStartedAt: T0, revealedChars: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [] };
+  const buzzer = { status: "reading" as const, readingStartedAt: T0, revealedChars: 0, positionMs: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [] };
 
   it("state carries the buzzer view", () => {
     const s = applyServerMessage(initialClientState, { ...baseState, phase: "question", question, buzzer }, T0);
