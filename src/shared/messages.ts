@@ -1,4 +1,4 @@
-import type { BuzzerStatus, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSetMode, QuestionSettings, TimerMode } from "./types";
+import type { BuzzerStatus, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionAudio, QuestionSetMode, QuestionSettings, TimerMode } from "./types";
 import { isValidCharsPerSecond } from "./validateQuestionSet";
 
 // ---- client -> server ----
@@ -78,7 +78,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 // ---- server -> client ----
 /** ゲーム冒頭に GM 画面へ映すスライド。index 0 がタイトル、以降が問題セットの introSlides */
 export type IntroSlideView =
-  | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: QuestionSetMode }
+  | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: QuestionSetMode; audio: boolean }  // audio: 早押しで全問に問読み音声がある
   | { kind: "slide"; heading?: string; body?: string; imageUrl?: string };
 
 export interface IntroView {
@@ -97,6 +97,7 @@ export interface QuestionView {
   background?: string;
   deadlineAt: number | null;
   maxAttempts: number | null;
+  audio?: QuestionAudio;          // 早押しの問読み音声。GM にだけ送る
 }
 
 export interface MyAnswerStatus {

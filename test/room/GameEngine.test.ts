@@ -497,7 +497,7 @@ describe("GameEngine intro", () => {
     expect(e.introIndex).toBe(0);
     expect(intro).toEqual({
       index: 0, total: 3,
-      slide: { kind: "title", name: "テスト", coverImageUrl: "/api/images/cover.png", questionCount: 2, settings: { ...DEFAULT_SETTINGS, maxAttempts: 5 }, mode: "anagram" },
+      slide: { kind: "title", name: "テスト", coverImageUrl: "/api/images/cover.png", questionCount: 2, settings: { ...DEFAULT_SETTINGS, maxAttempts: 5 }, mode: "anagram", audio: false },
     });
     expect(e.introView()).toEqual(intro);
     expect(e.currentQuestionView()).toBeNull();
@@ -841,5 +841,41 @@ describe("GameEngine buzzer mode with question audio", () => {
     const snap = JSON.parse(JSON.stringify(e.snapshot())) as EngineState;
     delete (snap.buzzer as Partial<NonNullable<EngineState["buzzer"]>>).positionMs;
     expect(GameEngine.fromSnapshot(snap).buzzerView()).toMatchObject({ status: "reading", positionMs: 0 });
+  });
+});
+
+describe("GameEngine views with question audio", () => {
+  const AUDIO = { url: "/api/audio/a.mp3", revealAtMs: [2000, 2300, 2300] };
+  function set(withAudioOnAll: boolean): QuestionSet {
+    return {
+      id: "bzv", name: "音声", mode: "buzzer", settings: { ...DEFAULT_SETTINGS },
+      questions: [
+        { id: "v1", type: "anagram", prompt: "あいう", answers: ["え"], audio: AUDIO },
+        { id: "v2", type: "anagram", prompt: "かきく", answers: ["け"], audio: withAudioOnAll ? AUDIO : undefined },
+      ],
+    };
+  }
+
+  it("sends the audio to the GM only", () => {
+    const e = GameEngine.create("BZV001");
+    startQuestions(e, set(false), false, T0);
+    expect(e.currentQuestionView("gm")?.audio).toEqual(AUDIO);
+    expect(e.currentQuestionView("player")?.audio).toBeUndefined();
+  });
+
+  it("sends no audio for a question without one", () => {
+    const e = GameEngine.create("BZV002");
+    e.addParticipant("p1", "みさき");
+    startQuestions(e, set(false), false, T0);
+    e.startReading(T0);
+    e.buzz("p1", T0 + 100);
+    e.judge("p1", true, T0 + 200);
+    e.next(T0 + 300);
+    expect(e.currentQuestionView("gm")?.audio).toBeUndefined();
+  });
+
+  it("the title slide says whether every question has audio", () => {
+    expect(GameEngine.create("BZV003").start(set(true), false).slide).toMatchObject({ kind: "title", audio: true });
+    expect(GameEngine.create("BZV004").start(set(false), false).slide).toMatchObject({ kind: "title", audio: false });
   });
 });

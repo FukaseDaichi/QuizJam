@@ -186,7 +186,7 @@ export class GameEngine {
     const slides = set.introSlides ?? [];
     const i = this.s.introIndex;
     const slide: IntroSlideView = i === 0
-      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode }
+      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode, audio: this.isBuzzer && set.questions.every((q) => !!q.audio) }
       : { kind: "slide", heading: slides[i - 1].heading, body: slides[i - 1].body, imageUrl: slides[i - 1].imageUrl };
     return { index: i, total: 1 + slides.length, slide };
   }
@@ -211,7 +211,7 @@ export class GameEngine {
     return { ...resolveSettings(this.s.questionSet, index), ...this.s.settingsOverride };
   }
 
-  /** 早押しモードでは参加者に問題文とヒントを渡さない（スマホはボタン専用機） */
+  /** 早押しモードでは参加者に問題文・ヒント・問読み音声を渡さない（スマホはボタン専用機） */
   currentQuestionView(role: "gm" | "player" = "gm"): QuestionView | null {
     const set = this.s.questionSet;
     if (!set || (this.s.phase !== "question" && this.s.phase !== "questionResult")) return null;
@@ -227,6 +227,7 @@ export class GameEngine {
       background: set.slideBackground,
       deadlineAt: this.s.deadlineAt,
       maxAttempts: this.settings().maxAttempts,
+      audio: this.isBuzzer && role === "gm" ? q.audio : undefined,
     };
   }
 
