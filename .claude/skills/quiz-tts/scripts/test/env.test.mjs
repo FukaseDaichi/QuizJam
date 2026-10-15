@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { parseDotenv, loadEnv, requireApiKey, EnvError } from "../lib/env.mjs";
+import { parseDotenv, loadEnv, requireApiKey, requirePublishEnv, EnvError } from "../lib/env.mjs";
 import { tmpDir } from "./helpers.mjs";
 
 test("parseDotenv: コメント・空行・引用符を扱う", () => {
@@ -35,4 +35,19 @@ test("requireApiKey: 環境変数を優先する", () => {
 test("requireApiKey: 無ければ EnvError で .env の作り方を案内する", () => {
   delete process.env.GEMINI_API_KEY;
   assert.throws(() => requireApiKey(tmpDir()), (err) => err instanceof EnvError && /\.env/.test(err.message));
+});
+
+test("requirePublishEnv: QUIZJAM_URL（末尾の / は外す）と ADMIN_PASSPHRASE を読む", () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, ".env"), "QUIZJAM_URL=https://quizjam.example.workers.dev/\nADMIN_PASSPHRASE=pass\n");
+  delete process.env.QUIZJAM_URL;
+  delete process.env.ADMIN_PASSPHRASE;
+  assert.deepEqual(requirePublishEnv(dir), { baseUrl: "https://quizjam.example.workers.dev", passphrase: "pass" });
+});
+
+test("requirePublishEnv: どちらかが無ければ EnvError", () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, ".env"), "QUIZJAM_URL=https://quizjam.example.workers.dev\n");
+  delete process.env.ADMIN_PASSPHRASE;
+  assert.throws(() => requirePublishEnv(dir), (err) => err instanceof EnvError && /ADMIN_PASSPHRASE/.test(err.message));
 });

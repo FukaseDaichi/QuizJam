@@ -26,3 +26,9 @@ test("CLI: align はセット名が無ければエラーで終了コード 1", (
   assert.equal(r.status, 1);
   assert.match(r.stderr, /セット名を指定してください: align/);
 });
+
+test("CLI: publish はセット名が無ければエラーで終了コード 1", () => {
+  const r = run("publish");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /セット名を指定してください: publish/);
+});
