@@ -11,8 +11,13 @@ export function emptyTiming(set) {
 
 export function readTiming(file, set) {
   if (!fs.existsSync(file)) return emptyTiming(set);
-  const t = JSON.parse(fs.readFileSync(file, "utf8"));
-  if (t?.version !== 1 || typeof t.entries !== "object" || t.entries === null) throw new Error(`timing.json の形式が不明です: ${file}`);
+  let t;
+  try {
+    t = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    throw new CommandError(`timing.json を読めません: ${file}（${err.message}）`);
+  }
+  if (t?.version !== 1 || typeof t.entries !== "object" || t.entries === null) throw new CommandError(`timing.json の形式が不明です: ${file}`);
   return t;
 }
 
@@ -89,10 +94,7 @@ export async function runAlign(ctx, { setName, only = [], force = false } = {}) 
   }
 
   if (jobs.length > 0) {
-    if (!ctx.uvAvailable()) {
-      ctx.log("エラー: uv が見つかりません。https://docs.astral.sh/uv/ の手順で入れてから、もう一度 align を実行してください");
-      return { ...result, noUv: true };
-    }
+    if (!ctx.uvAvailable()) return { ...result, noUv: true };
     let words = {};
     try {
       words = await ctx.alignWords(jobs.map(({ id, wav, text }) => ({ id, wav, text })));
@@ -102,15 +104,20 @@ export async function runAlign(ctx, { setName, only = [], force = false } = {}) 
     for (const j of jobs) {
       const w = words[j.id];
       if (!w) continue;
-      if (!Array.isArray(w)) {
-        result.failed.push({ id: j.id, error: w.error ?? "単語の時刻を取れませんでした" });
+      if (!Array.isArray(w) || w.length === 0) {
+        result.failed.push({ id: j.id, error: Array.isArray(w) ? "Whisper が単語を 1 つも返しませんでした" : w.error ?? "単語の時刻を取れませんでした" });
         continue;
       }
-      const { revealAtMs, warnings } = computeRevealAtMs({ prompt: j.prompt, words: w, silences: ctx.detectSilences(j.wav), offsetMs });
-      for (const msg of warnings) result.warnings.push(`${j.id}: ${msg}`);
-      timing.entries[j.id] = { prompt: j.prompt, mp3Sha256: j.mp3Sha256, revealAtMs };
-      result.aligned.push(j.id);
-      ctx.log(`${j.id}: 揃え`);
+      // 1 問の失敗（ffmpeg など）でほかの問の結果を捨てない
+      try {
+        const { revealAtMs, warnings } = computeRevealAtMs({ prompt: j.prompt, words: w, silences: ctx.detectSilences(j.wav), offsetMs });
+        for (const msg of warnings) result.warnings.push(`${j.id}: ${msg}`);
+        timing.entries[j.id] = { prompt: j.prompt, mp3Sha256: j.mp3Sha256, revealAtMs };
+        result.aligned.push(j.id);
+        ctx.log(`${j.id}: 揃え`);
+      } catch (err) {
+        result.failed.push({ id: j.id, error: err.message });
+      }
     }
   }
 

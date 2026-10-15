@@ -120,3 +120,23 @@ test("runPublish: セット名か問題セットが無ければ CommandError", a
   fs.rmSync(setFile);
   await assert.rejects(runPublish(ctx, { setName: "movie", ...target }), /question-sets\/movie\.json/);
 });
+
+test("runPublish: 早押しモードでない問題セットは CommandError（取り込むと音声が落ちる）", async () => {
+  const { ctx, uploads, setFile } = setup();
+  fs.writeFileSync(setFile, formatQuestionSet({ ...SET, mode: undefined }));
+  await assert.rejects(runPublish(ctx, { setName: "movie", ...target }), /buzzer/);
+  assert.equal(uploads.length, 0);
+});
+
+test("runPublish: 応答の url が無いか、上げた mp3 の SHA-256 と合わなければ失敗にする", async () => {
+  const { ctx, setFile } = setup();
+  const before = fs.readFileSync(setFile, "utf8");
+  ctx.fetch = async () => new Response(JSON.stringify({ key: "x.mp3", url: "/api/audio/x.mp3" }), { status: 200 });
+  const r = await runPublish(ctx, { setName: "movie", ...target });
+  assert.deepEqual(r.failed.map((f) => f.id), ["Q01", "Q02"]);
+  assert.match(r.failed[0].error, /url/);
+  ctx.fetch = async () => new Response("{}", { status: 201 });
+  const r2 = await runPublish(ctx, { setName: "movie", ...target });
+  assert.equal(r2.failed.length, 2);
+  assert.equal(fs.readFileSync(setFile, "utf8"), before);
+});

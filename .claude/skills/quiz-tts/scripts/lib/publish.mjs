@@ -41,6 +41,8 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
     throw new CommandError(`${rel(ctx, setFile)} を読めません: ${err.message}`);
   }
   if (!Array.isArray(set?.questions)) throw new CommandError(`${rel(ctx, setFile)} に questions がありません`);
+  // 問読み音声は早押しモードでだけ保存される。ほかのモードでは取り込んだときに落ちる
+  if (set.mode !== "buzzer") throw new CommandError(`${rel(ctx, setFile)} は早押しモード（"mode": "buzzer"）ではありません`);
   const dir = setDir(ctx, setName);
   const timing = readTiming(path.join(dir, "timing.json"), setName);
   const result = { published: [], stale: [], failed: [] };
@@ -50,11 +52,12 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
     const mp3 = path.join(dir, `${q.id}.full.mp3`);
     const prompt = typeof q.prompt === "string" ? q.prompt.trim() : "";
     const entry = timing.entries[q.id];
-    if (!fs.existsSync(mp3) || !isTimingFresh(entry, prompt, sha256File(mp3))) {
+    const sha = fs.existsSync(mp3) ? sha256File(mp3) : null;
+    if (!sha || !isTimingFresh(entry, prompt, sha)) {
       result.stale.push(q.id);
       continue;
     }
-    jobs.push({ q, mp3, revealAtMs: entry.revealAtMs });
+    jobs.push({ q, mp3, sha, revealAtMs: entry.revealAtMs });
   }
   if (result.stale.length > 0) {
     ctx.log(`timing.json が古いか無い問があるので、何も上げていません: ${result.stale.join(", ")}（先に join と align を実行してください）`);
@@ -70,6 +73,8 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
       });
       if (!res.ok) throw new Error(`アップロードに失敗しました（HTTP ${res.status}）`);
       const { url } = await res.json();
+      // サーバーは中身の SHA-256 をキーにする。違えば別のものが返っている
+      if (typeof url !== "string" || !url.endsWith(`/${j.sha}.mp3`)) throw new Error(`応答の url が不正です: ${JSON.stringify(url)}`);
       j.q.audio = { url, revealAtMs: j.revealAtMs };
       result.published.push(j.q.id);
       ctx.log(`${j.q.id}: ${url}`);

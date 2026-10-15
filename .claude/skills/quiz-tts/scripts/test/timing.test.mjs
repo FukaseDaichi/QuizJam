@@ -122,3 +122,10 @@ test("computeRevealAtMs: 寄せ・対応づけ・オフセットをまとめて�
   assert.deepEqual(r.revealAtMs, [2300, 2800, 3500]);
   assert.deepEqual(r.warnings, []);
 });
+
+test("全角数字も半角と同じにかなへ直し、桁ごとに対応づける", () => {
+  assert.deepEqual(kanaizeNumbers("１９５５年"), { text: "せんきゅうひゃくごじゅうご年", warnings: [] });
+  const reading = [..."せんきゅうひゃくごじゅうご年"];
+  const times = reading.map((_, k) => k / 10);
+  assert.deepEqual(displayCharTimes("１９５５年", reading, times, 2), [0, 0.2, 0.8, 1.2, 1.3]);
+});

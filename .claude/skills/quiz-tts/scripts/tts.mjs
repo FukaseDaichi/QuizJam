@@ -81,7 +81,10 @@ async function main() {
     case "align": {
       Object.assign(ctx, { uvAvailable, alignWords, detectSilences });
       const r = await runAlign(ctx, { setName, only: values.only ?? [], force: values.force });
-      if (r.noUv) return 2;
+      if (r.noUv) {
+        console.error("エラー: uv が見つかりません。https://docs.astral.sh/uv/ の手順で入れてから、もう一度 align を実行してください");
+        return 2;
+      }
       return r.failed.length > 0 ? 1 : 0;
     }
     case "publish": {

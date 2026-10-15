@@ -26,7 +26,12 @@ export function numberToKana(n) {
   return numberKanaParts(String(n)).join("");
 }
 
-/** かなに直せる数字の並び（1〜9999 で 0 始まりでない） */
+/** 全角数字を半角にする（IME で打った「１９５５」も同じに扱う） */
+const toHalfWidth = (s) => s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+const DIGIT = /[0-9０-９]/;
+const DIGITS_RUN = /[0-9０-９]+/g;
+
+/** かなに直せる数字の並び（1〜9999 で 0 始まりでない。半角にしてから判定） */
 const isKanaizable = (m) => !m.startsWith("0") && Number(m) >= 1 && Number(m) <= 9999;
 
 /**
@@ -35,12 +40,12 @@ const isKanaizable = (m) => !m.startsWith("0") && Number(m) >= 1 && Number(m) <=
  */
 export function kanaizeNumbers(text) {
   const warnings = [];
-  const out = text.replace(/\d+/g, (m) => {
-    if (!isKanaizable(m)) {
+  const out = text.replace(DIGITS_RUN, (m) => {
+    if (!isKanaizable(toHalfWidth(m))) {
       warnings.push(`読みの数字「${m}」はかなに直せないのでそのまま当てはめます（タイミングがずれていれば読みをかなで書く）`);
       return m;
     }
-    return numberToKana(Number(m));
+    return numberToKana(Number(toHalfWidth(m)));
   });
   return { text: out, warnings };
 }
@@ -177,8 +182,8 @@ export function displayCharTimes(display, readingChars, times, endTime) {
   const owner = [];   // expanded[k] が表示の何文字目から来たか
   for (let i = 0; i < disp.length; ) {
     let k = i;
-    while (k < disp.length && /\d/.test(disp[k])) k++;
-    const run = disp.slice(i, k).join("");
+    while (k < disp.length && DIGIT.test(disp[k])) k++;
+    const run = toHalfWidth(disp.slice(i, k).join(""));
     if (k > i && isKanaizable(run)) {
       numberKanaParts(run).forEach((part, p) => {
         for (const c of part) { expanded.push(c); owner.push(i + p); }

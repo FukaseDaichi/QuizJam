@@ -153,3 +153,25 @@ test("runAlign: セット名・問題セット・mondai.wav・ffmpeg が無け�
   fs.rmSync(path.join(out, "mondai.wav"));
   await assert.rejects(runAlign(ctx, { setName: "movie" }), /mondai/);
 });
+
+test("runAlign: 1 問の無音検出が失敗してもその問だけ失敗にし、ほかの問は書く", async () => {
+  const { ctx, readTiming } = setup();
+  ctx.detectSilences = (wav) => { if (/Q01/.test(wav)) throw new Error("ffmpeg broke"); return []; };
+  const r = await runAlign(ctx, { setName: "movie" });
+  assert.deepEqual(r.failed.map((f) => f.id), ["Q01"]);
+  assert.match(r.failed[0].error, /ffmpeg broke/);
+  assert.deepEqual(Object.keys(readTiming().entries), ["Q02"]);
+});
+
+test("runAlign: Whisper が単語を 1 つも返さなかった問は失敗にする", async () => {
+  const { ctx, readTiming } = setup({ words: { Q01: [], Q02: WORDS.Q02 } });
+  const r = await runAlign(ctx, { setName: "movie" });
+  assert.deepEqual(r.failed.map((f) => f.id), ["Q01"]);
+  assert.deepEqual(Object.keys(readTiming().entries), ["Q02"]);
+});
+
+test("runAlign: 壊れた timing.json は CommandError", async () => {
+  const { ctx, timingFile } = setup();
+  fs.writeFileSync(timingFile, "{ broken");
+  await assert.rejects(runAlign(ctx, { setName: "movie" }), CommandError);
+});
