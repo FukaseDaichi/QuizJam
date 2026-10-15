@@ -1,5 +1,6 @@
 import type { IntroSlide, Question, QuestionSetMode, QuestionSettings } from "../../shared/types";
 import { MAX_INTRO_SLIDES } from "../../shared/validateQuestionSet";
+import { promptLength } from "../../shared/buzzer";
 
 /** 編集画面で選択中のスライド。"title" がタイトル、{ intro } が説明スライド、数値が問題のインデックス */
 export type Selection = "title" | number | { intro: number };
@@ -38,6 +39,10 @@ export function findProblem(d: EditorDraft): { slide: Selection; message: string
     if (!q.answers.some((a) => a.trim())) return { slide: i, message: `第${i + 1}問の正解を入力してください` };
     if (d.mode === "buzzer") {
       if (!q.prompt.trim()) return { slide: i, message: `第${i + 1}問の問題文を入力してください` };
+      // 音声のタイミング表は問題文の 1 文字ごと。アナグラムに切り替えて問題文を直した後などに合わなくなる
+      if (q.audio && q.audio.revealAtMs.length !== promptLength(q.prompt.trim())) {
+        return { slide: i, message: `第${i + 1}問の問題文が音声と合っていません。「音声を外す」で音声を外してください` };
+      }
     } else if (!q.prompt.trim() && !q.imageUrl) {
       return { slide: i, message: `第${i + 1}問の出題文か画像を入れてください（出題文は「生成」で正解から作れます）` };
     }

@@ -50,3 +50,16 @@ describe("buzzer mode checks", () => {
     expect(findProblem({ ...draft, mode: "buzzer" as const })).toBeNull();
   });
 });
+
+describe("question audio checks", () => {
+  const audio = { url: "/api/audio/a.mp3", revealAtMs: [2000, 2300, 2600] };
+
+  it("findProblem points at a buzzer question whose prompt no longer fits its audio", () => {
+    const d = { ...draft, mode: "buzzer" as const, questions: [{ ...q, audio }, { ...q, id: "q2", prompt: "ごんりんご", audio }] };
+    expect(findProblem(d)).toEqual({ slide: 1, message: "第2問の問題文が音声と合っていません。「音声を外す」で音声を外してください" });
+  });
+
+  it("does not complain in anagram mode, where the audio is dropped on save", () => {
+    expect(findProblem({ ...draft, questions: [{ ...q, prompt: "ごんりんご", audio }] })).toBeNull();
+  });
+});
