@@ -4,6 +4,7 @@ import { wavInfo } from "./wav.mjs";
 import { parseScript } from "./script.mjs";
 import { entryHash, readManifest, writeManifest, needsBuild } from "./manifest.mjs";
 import { runPool } from "./pool.mjs";
+import { needsJoin } from "./join.mjs";
 
 export class CommandError extends Error {}
 
@@ -126,6 +127,44 @@ export async function runBuild(ctx, { setName, only = [], force = false } = {}) 
   result.failed.sort((a, b) => a.id.localeCompare(b.id));
   ctx.log(`生成 ${result.generated.length} / 変更なし ${result.skipped.length} / 失敗 ${result.failed.length}`);
   for (const w of result.warnings) ctx.log(`警告: ${w}`);
+  for (const f of result.failed) ctx.log(`失敗: ${f.id}: ${f.error}`);
+  return result;
+}
+
+/** build 済みの WAV を「問題！」と結合して mp3 にする */
+export async function runJoin(ctx, { setName, only = [] } = {}) {
+  if (!setName) throw new CommandError("セット名を指定してください: join <セット名>");
+  const mondai = mondaiPath(ctx);
+  if (!fs.existsSync(mondai)) throw new CommandError(`${rel(ctx, mondai)} がありません。先に mondai を実行してください`);
+  if (!ctx.ffmpegAvailable()) {
+    ctx.log("警告: ffmpeg が見つからないので結合を飛ばします（https://ffmpeg.org/ から入れて PATH を通す）");
+    return { joined: [], skipped: [], failed: [], noFfmpeg: true };
+  }
+  const { questions } = loadSet(ctx, setName);
+  const targets = selectQuestions(questions, only);
+  const dir = setDir(ctx, setName);
+  const result = { joined: [], skipped: [], failed: [] };
+  for (const q of targets) {
+    const wav = path.join(dir, `${q.id}.wav`);
+    const mp3 = path.join(dir, `${q.id}.full.mp3`);
+    if (!fs.existsSync(wav)) {
+      result.failed.push({ id: q.id, error: "WAV がありません。先に build を実行してください" });
+      continue;
+    }
+    if (!needsJoin(mp3, [wav, mondai])) {
+      result.skipped.push(q.id);
+      continue;
+    }
+    try {
+      ctx.joinQuestion({ mondaiWav: mondai, questionWav: wav, pauseMs: ctx.config.pauseMs, outMp3: mp3 });
+      result.joined.push(q.id);
+      ctx.log(`${q.id}: 結合 → ${rel(ctx, mp3)}`);
+    } catch (err) {
+      result.failed.push({ id: q.id, error: err.message });
+      ctx.log(`${q.id}: 失敗 ${err.message}`);
+    }
+  }
+  ctx.log(`結合 ${result.joined.length} / 変更なし ${result.skipped.length} / 失敗 ${result.failed.length}`);
   for (const f of result.failed) ctx.log(`失敗: ${f.id}: ${f.error}`);
   return result;
 }

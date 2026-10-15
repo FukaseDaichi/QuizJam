@@ -6,7 +6,8 @@ import { requireApiKey, EnvError } from "./lib/env.mjs";
 import { loadConfig, ConfigError } from "./lib/config.mjs";
 import { synthesize } from "./lib/gemini.mjs";
 import { ScriptError } from "./lib/script.mjs";
-import { CommandError, runMondai, runVoices, runBuild } from "./lib/commands.mjs";
+import { ffmpegAvailable, joinQuestion } from "./lib/join.mjs";
+import { CommandError, runMondai, runVoices, runBuild, runJoin } from "./lib/commands.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -32,8 +33,8 @@ async function main() {
     config,
     log: console.log,
     now: () => new Date(),
-    ffmpegAvailable: () => false, // Task 9 で join.mjs の実装に差し替える
-    joinQuestion: () => {},
+    ffmpegAvailable,
+    joinQuestion,
     synthesize: null,
   };
   const withKey = () => {
@@ -55,9 +56,10 @@ async function main() {
       const r = await runBuild(ctx, { setName, only: values.only ?? [], force: values.force });
       return r.failed.length > 0 ? 1 : 0;
     }
-    case "join":
-      console.error("join は未実装です");
-      return 2;
+    case "join": {
+      const r = await runJoin(ctx, { setName, only: values.only ?? [] });
+      return r.failed.length > 0 ? 1 : 0;
+    }
     default:
       console.error(USAGE);
       return 2;

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { validateConfig } from "../lib/config.mjs";
-import { runMondai, runVoices, runBuild } from "../lib/commands.mjs";
+import { runMondai, runVoices, runBuild, runJoin } from "../lib/commands.mjs";
 import { tmpDir, makeWav } from "./helpers.mjs";
 
 /** テスト用の ctx。synthesize は呼び出しを記録し、seconds 秒の WAV を返す */
@@ -190,4 +190,44 @@ test("runBuild: 台本の警告をログに出す", async () => {
   writeSet(root, "s", "## Q01\n- 読み: 『いち』\n");
   await runBuild(ctx, { setName: "s" });
   assert.ok(logs.some((l) => /警告: Q01:.*『』/.test(l)));
+});
+
+test("runJoin: mondai.wav が無ければ CommandError", async () => {
+  const { ctx, root } = makeCtx();
+  writeSet(root, "s", SET);
+  await assert.rejects(runJoin(ctx, { setName: "s" }), /mondai/);
+});
+
+test("runJoin: ffmpeg が無ければ警告して何もしない", async () => {
+  const { ctx, logs, root } = makeCtx();
+  writeSet(root, "s", SET);
+  await runMondai(ctx, {});
+  ctx.ffmpegAvailable = () => false;
+  const r = await runJoin(ctx, { setName: "s" });
+  assert.equal(r.noFfmpeg, true);
+  assert.ok(logs.some((l) => /ffmpeg/.test(l)));
+});
+
+test("runJoin: build 済みの問を結合し、WAV が無い問は失敗。2 回目は変更なし", async () => {
+  const { ctx, root } = makeCtx();
+  writeSet(root, "s", SET);
+  await runMondai(ctx, {});
+  await runBuild(ctx, { setName: "s", only: ["Q01", "Q02"] });
+  const joins = [];
+  ctx.joinQuestion = (opts) => {
+    joins.push(opts);
+    fs.writeFileSync(opts.outMp3, "mp3");
+  };
+  const r = await runJoin(ctx, { setName: "s" });
+  assert.deepEqual(r.joined, ["Q01", "Q02"]);
+  assert.deepEqual(r.failed.map((f) => f.id), ["Q03"]);
+  assert.equal(joins[0].pauseMs, 600);
+  assert.equal(path.basename(joins[0].mondaiWav), "mondai.wav");
+  assert.equal(path.basename(joins[0].outMp3), "Q01.full.mp3");
+  const past = new Date(Date.now() - 60_000);
+  for (const f of ["Q01.wav", "Q02.wav"]) fs.utimesSync(path.join(root, "voice", "out", "s", f), past, past);
+  fs.utimesSync(path.join(root, "voice", "out", "mondai.wav"), past, past);
+  const r2 = await runJoin(ctx, { setName: "s", only: ["Q01", "Q02"] });
+  assert.deepEqual(r2.skipped, ["Q01", "Q02"]);
+  assert.equal(joins.length, 2);
 });
