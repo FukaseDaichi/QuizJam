@@ -36,11 +36,14 @@ class Client {
     });
   }
   send(m: unknown) { this.ws.send(typeof m === "string" ? m : JSON.stringify(m)); }
-  /** 指定 type（と任意の条件）に合う最初のメッセージを返し、バッファから取り除く */
+  /**
+   * 指定 type（と任意の条件）に合う最初のメッセージを返し、バッファから取り除く。
+   * 全件を並列に流すと、ローカルの Durable Object がまれに 2 秒ほど止まって 1 通だけ遅れて届くので、上限は長めにとる
+   */
   async waitFor<T extends ServerMessage["type"]>(
     type: T,
     pred: (m: Extract<ServerMessage, { type: T }>) => boolean = () => true,
-    timeoutMs = 2000,
+    timeoutMs = 10_000,
   ): Promise<Extract<ServerMessage, { type: T }>> {
     type M = Extract<ServerMessage, { type: T }>;
     const matches = (m: ServerMessage): m is M => m.type === type && pred(m as M);
