@@ -140,3 +140,14 @@ test("runPublish: 応答の url が無いか、上げた mp3 の SHA-256 と合�
   assert.equal(r2.failed.length, 2);
   assert.equal(fs.readFileSync(setFile, "utf8"), before);
 });
+
+test("runPublish: WAV が mp3 より新しい（join していない）問は古いとみなし、何も上げない", async () => {
+  const { ctx, uploads, dir } = setup();
+  const wav = path.join(dir, "Q02.wav");
+  fs.writeFileSync(wav, "wav");
+  const future = new Date(Date.now() + 60_000);
+  fs.utimesSync(wav, future, future);
+  const r = await runPublish(ctx, { setName: "movie", ...target });
+  assert.deepEqual(r.stale, ["Q02"]);
+  assert.equal(uploads.length, 0);
+});

@@ -4,6 +4,7 @@ import path from "node:path";
 import { wavInfo } from "./wav.mjs";
 import { CommandError, loadSet, mondaiPath, rel, selectQuestions, setDir } from "./commands.mjs";
 import { computeRevealAtMs, kanaizeNumbers } from "./timing.mjs";
+import { needsJoin } from "./join.mjs";
 
 export function emptyTiming(set) {
   return { version: 1, set, entries: {} };
@@ -81,6 +82,11 @@ export async function runAlign(ctx, { setName, only = [], force = false } = {}) 
     const mp3 = path.join(dir, `${q.id}.full.mp3`);
     if (!fs.existsSync(wav) || !fs.existsSync(mp3)) {
       result.failed.push({ id: q.id, error: "WAV か mp3 がありません。先に build と join を実行してください" });
+      continue;
+    }
+    // 時刻は WAV から作り、公開するのは mp3。mp3 が今の WAV・「問題！」から作られていないと音と文字がずれる
+    if (needsJoin(mp3, [wav, mondai])) {
+      result.failed.push({ id: q.id, error: "mp3 が WAV か mondai.wav より古いです。先に join を実行してください" });
       continue;
     }
     const mp3Sha256 = sha256File(mp3);

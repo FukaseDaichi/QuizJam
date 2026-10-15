@@ -20,7 +20,10 @@ description: 早押しクイズの問題文から問読み（読み上げ）音�
 8. 台本・`voice/out/<セット名>/manifest.json`・`Qnn.full.mp3`・`timing.json` をコミットする（`Qnn.wav` は .gitignore 済み）
 9. アプリに入れるときだけ: ユーザーに確認してから `npm run tts -- publish <セット名>`（デプロイ済みのアプリに mp3 を上げ、`question-sets/<セット名>.json` に `audio` を書き込む。`.env` に `QUIZJAM_URL` と `ADMIN_PASSPHRASE` が要る）。書き込んだ JSON をコミットし、管理画面で問題セットの編集画面から「インポート」して保存してもらう。mp3 は publish した先の R2 にしか無いので、取り込む先と同じアプリ（`QUIZJAM_URL`）に publish する
 
-問題セットの `prompt` を直したら、その問は `align` → `publish` をやり直す（タイミング表は問題文の 1 文字ごとに作るため）。
+直したあとのやり直し:
+
+- 問題セットの `prompt`（表示する問題文）だけを直したら、その問は `align` → `preview` → `publish`（タイミング表は問題文の 1 文字ごとに作るため）
+- 台本の `読み` を直したら、`build` → `join` → `align` → `preview` → `publish`（音声が変わるため）。`align` と `publish` は、mp3 が今の WAV や `mondai.wav` より古い（`join` していない）問を止める
 
 ## 台本ファイルの形
 

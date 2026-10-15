@@ -175,3 +175,14 @@ test("runAlign: 壊れた timing.json は CommandError", async () => {
   fs.writeFileSync(timingFile, "{ broken");
   await assert.rejects(runAlign(ctx, { setName: "movie" }), CommandError);
 });
+
+test("runAlign: WAV か mondai.wav が mp3 より新しい（join していない）問は失敗にして、時刻を作らない", async () => {
+  const { ctx, calls, out, readTiming } = setup();
+  const future = new Date(Date.now() + 60_000);
+  fs.utimesSync(path.join(out, "movie", "Q01.wav"), future, future);
+  const r = await runAlign(ctx, { setName: "movie" });
+  assert.deepEqual(r.failed.map((f) => f.id), ["Q01"]);
+  assert.match(r.failed[0].error, /join/);
+  assert.deepEqual(calls[0].map((j) => j.id), ["Q02"]);
+  assert.deepEqual(Object.keys(readTiming().entries), ["Q02"]);
+});
