@@ -1,6 +1,6 @@
 ---
 name: quiz-tts
-description: 早押しクイズの問題文から問読み（読み上げ）音声を Gemini 3.8 Flash TTS で生成する。「問読みの音声を作って」「この問題セットの読み上げを生成して」「台本を書いて音声にして」「声を選びたい」と言われたとき、または voice/sets/ の台本を書いたり直したりするときに使う。QuizJam アプリ本体には触らない。
+description: 早押しクイズの問題文から問読み（読み上げ）音声を Gemini 3.8 Flash TTS で生成し、音声に合わせた文字の表示時刻を作って QuizJam に上げる。「問読みの音声を作って」「この問題セットの読み上げを生成して」「台本を書いて音声にして」「声を選びたい」「音声と文字を合わせて」「音声をアプリに入れて」と言われたとき、または voice/sets/ の台本を書いたり直したりするときに使う。アプリのコードには触らない（問題セット JSON に書き込むだけ）。
 ---
 
 # quiz-tts: 早押し問読み音声の生成
@@ -15,7 +15,11 @@ description: 早押しクイズの問題文から問読み（読み上げ）音�
 3. `npm run tts -- build <セット名>`（変わった問だけ生成。台本の警告が出たら台本を直して再実行）
 4. `npm run tts -- join <セット名>`（`Qnn.full.mp3` ができる）
 5. 出力の `生成 n / 変更なし n / 失敗 n` と警告（短すぎ・長すぎ）を確認。失敗や警告があれば台本を直して 3 へ
-6. 台本・`voice/out/<セット名>/manifest.json`・`Qnn.full.mp3` をコミットする（`Qnn.wav` は .gitignore 済み）
+6. `npm run tts -- align <セット名>`（`timing.json` ができる。問題文は `question-sets/<セット名>.json` の `prompt` を使うので、同じ ID の問題セットが要る）。警告（2 文字以上で長さ 0 の単語・1.5 秒を超える単語、かなに直せない数字）が出た問は、読みをかなで書くなどして 3 へ
+7. 台本・`voice/out/<セット名>/manifest.json`・`Qnn.full.mp3`・`timing.json` をコミットする（`Qnn.wav` は .gitignore 済み）
+8. アプリに入れるときだけ: ユーザーに確認してから `npm run tts -- publish <セット名>`（デプロイ済みのアプリに mp3 を上げ、`question-sets/<セット名>.json` に `audio` を書き込む。`.env` に `QUIZJAM_URL` と `ADMIN_PASSPHRASE` が要る）。書き込んだ JSON をコミットし、管理画面で問題セットの編集画面から「インポート」して保存してもらう
+
+問題セットの `prompt` を直したら、その問は `align` → `publish` をやり直す（タイミング表は問題文の 1 文字ごとに作るため）。
 
 ## 台本ファイルの形
 
@@ -59,12 +63,16 @@ npm run tts -- voices [--text 文]                       # 候補の声で聴き
 npm run tts -- mondai [--force]                         # 「問題！」を 1 回だけ生成（voice/out/mondai.wav）
 npm run tts -- build <セット名> [--only Qnn] [--force]  # 台本から各問の WAV（変わった問だけ）
 npm run tts -- join <セット名> [--only Qnn]             # 問題！＋無音＋問題文 → Qnn.full.mp3（ffmpeg）
+npm run tts -- align <セット名> [--only Qnn] [--force]  # 各文字の表示時刻 → timing.json（変わった問だけ。uv・ffmpeg）
+npm run tts -- publish <セット名>                       # mp3 をアプリに上げ、問題セット JSON に audio を書き込む
 npm run test:tts                                        # スクリプトのテスト
 ```
 
 - 終了コード 1 = どれかの問が失敗（出力の `失敗:` 行を見る）。429 / 5xx は 2・4・8 秒待って 3 回まで自動で再試行する
 - 声を変えたいとき: `voices` で聴き比べ → `voice/config.json` の `voice` を変更 → `mondai --force` → `build <セット名>`（ハッシュに声が入っているので全問が再生成される）→ `join`
-- 間の長さは `voice/config.json` の `pauseMs`（ms）。変えたら mp3 を消して `join`
+- 間の長さは `voice/config.json` の `pauseMs`（ms）。変えたら mp3 を消して `join` → `align`
+- `align` は台本の読み（数字はかなに直す）を `Qnn.wav` に強制アライメントし（`align/` の Python。stable-ts + Whisper small）、間の後の読み始めを無音の明けに寄せ、問題セットの問題文と文字単位で対応づける。時刻は `Qnn.full.mp3` の頭（「問題！」の頭）からの ms。初回は uv が Python 環境を作り、モデル（約 460 MB）をダウンロードする。uv が無ければ終了コード 2
+- `publish` は timing.json が古い・無い問が 1 つでもあれば何も上げずに終了コード 1。アップロードに失敗した問があれば JSON は書き換えない
 
 ## 設定（voice/config.json）
 
@@ -77,9 +85,10 @@ npm run test:tts                                        # スクリプトのテ�
 | `mondaiText` | 「問題！」の文 |
 | `pauseMs` | 「問題！」と問題文の間の無音（ms） |
 | `concurrency` | 同時リクエスト数（1〜4） |
+| `questionSetsDir` | 問題セット JSON の置き場所（既定 `question-sets`）。align・publish が `<セット名>.json` を読み書きする |
 
 ## 制限
 
 - 文字単位のアクセント・速度の数値指定は Gemini TTS に無い。ポーズと style で近づける
 - Voice design（専用声）は使わない。プリセット声は有効期限がなく、作り直しても同じ声になる
-- QuizJam アプリ内での再生・文字送りとの同期は対象外（`manifest.json` に問ごとの長さを残してあるので、組み込むときに使う）
+- `align` のずれはおおむね ±0.2 秒。読みと表記が大きく違う語（記号・略語・英語）は警告を見て、ずれていれば読みをかなで書く。表示にだけある文字（『』「」、英語の併記）は次に読む文字と同時に出る

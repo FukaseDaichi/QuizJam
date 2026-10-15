@@ -7,7 +7,7 @@
 | データ | 保存先 | 理由 |
 |---|---|---|
 | 問題セット（永続） | D1 `quizjam-db` | ルームをまたいで再利用する |
-| 問題・解説・表紙の画像 | R2 `quizjam-images` | D1 の行サイズ制限を避け、長期キャッシュで配信する |
+| 問題・解説・表紙の画像、早押しの問読み音声 | R2 `quizjam-images` | D1 の行サイズ制限を避け、長期キャッシュで配信する |
 | ルーム進行状態（参加者・現在の問題・回答・スコア・ライブ設定） | ルームの Durable Object 内 SQLite | 1ルーム1オブジェクトで強い整合性。再起動後も復元できる |
 | GM トークン・参加者トークン（ブラウザ側） | localStorage | リロード・再接続時に同じ GM／参加者として復帰する |
 
@@ -52,6 +52,13 @@ interface Question {
   imageUrl?: string;           // 問題画像。GM・参加者画面で出題文の上に表示
   explanationImageUrl?: string; // 解説画像。問題結果画面でだけ表示する
   overrides?: Partial<QuestionSettings>;
+  audio?: QuestionAudio;       // 早押しの問読み音声。早押しモードでだけ使う
+}
+
+/** 問読み音声と、問題文の各文字を出す時刻（quiz-tts の align・publish が作る） */
+interface QuestionAudio {
+  url: string;                 // /api/audio/<key>（R2）か https
+  revealAtMs: number[];        // 問題文の各文字（コードポイント）を出す時刻。音声の頭（「問題！」の頭）からの ms
 }
 
 /** GM がゲーム中に上書きできる設定 */
@@ -73,6 +80,7 @@ API 受信時とインポート時に同じ検証を適用する。
 - `introSlides[].id` が無ければサーバーが UUID を採番する
 - `questions[].answers` は空でない文字列の配列（1件以上）
 - `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する（`explanationImageUrl` は出題文の代わりにならない）。`mode: "buzzer"` では読み上げる文章が要るので、画像があっても `prompt` は必須
+- `questions[].audio` は `mode: "buzzer"` でだけ保存し、ほかのモードでは落とす。`url` は `/api/audio/<key>` か `https://` で始まる 500 文字以内。`revealAtMs` は前後の空白を除いた `prompt` の文字数（コードポイント）と同じ長さで、0〜600000 の整数が前の要素以上で並ぶ
 - `questions[].id` が無ければサーバーが UUID を採番する
 
 ### D1 スキーマ
@@ -94,6 +102,11 @@ CREATE TABLE question_sets (
 - 受け付ける形式は PNG / JPEG / WebP / GIF、5MB まで。キーは `<uuid>.<拡張子>`。
 - キーは内容ごとに一意なので、配信時は `Cache-Control: public, max-age=31536000, immutable` を付ける。
 - ブラウザはアップロード前に長辺 1600px に縮小する。PNG は透過を保つため PNG のまま、GIF はアニメーションを保つためそのまま、それ以外は JPEG（品質 0.88）にする。縮小不要かつ 1.5MB 未満ならそのまま送る。
+
+### 問読み音声
+
+- 早押しの問読み音声（「問題！」＋間＋問題文の mp3）は画像と同じバケットに置く。mp3 だけ、2MB まで。キーは本文の SHA-256 ＋ `.mp3` なので、同じ音声を何度上げても増えない。配信は画像と同じく長期キャッシュ。
+- 音声とタイミング表は quiz-tts の `align`・`publish` が作り、`question-sets/<セット名>.json` の各問に `audio` として書き込む。管理画面ではその JSON をインポートして保存する。
 
 ## ルーム状態（Durable Object 内）
 
@@ -118,6 +131,7 @@ interface BuzzerState {
   status: "ready" | "reading" | "paused";
   readingStartedAt: number | null;  // reading のとき、今の区間を読み始めたサーバー時刻 (UNIX ms)
   revealedChars: number;            // 区間の起点。止めたときまでに表示済みの文字数（コードポイント単位）
+  positionMs: number;               // 区間の起点での問読み音声の再生位置 (ms)。音声付きの問題でだけ使う
   queue: string[];                  // 早押しキュー（参加者 ID、サーバー受信順）。先頭が回答中
   lockedOut: string[];              // この問題で不正解になり、押せなくなった参加者 ID
 }
@@ -147,4 +161,4 @@ Durable Object の SQLite には次を保存する。
 | `kv` | `snapshot`（`EngineState` の JSON）、`gmToken`、`alarmKind`（`deadline` か `cleanup`） |
 | `tokens` | 参加者トークン → 参加者 ID |
 
-状態を変更するたびにスナップショットを書き戻し、オブジェクト起動時に復元する。旧スナップショットに `buzzer` が無ければ `null` として復元する。早押しの正解・不正解も `answers` に `text: ""` で記録する（正解は `correctRank: 1`、`points: basePoints`。不正解は `points: −wrongPenalty`）。
+状態を変更するたびにスナップショットを書き戻し、オブジェクト起動時に復元する。旧スナップショットに `buzzer` が無ければ `null`、`buzzer.positionMs` が無ければ 0 として復元する。早押しの正解・不正解も `answers` に `text: ""` で記録する（正解は `correctRank: 1`、`points: basePoints`。不正解は `points: −wrongPenalty`）。

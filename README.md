@@ -45,13 +45,15 @@ npm run deploy
 
 ## 早押しの問読み音声
 
-`voice/sets/<セット名>.md` に台本（問題文と読み）を書き、Gemini 3.8 Flash TTS で読み上げ音声を作る。手順と台本の書き方は `.claude/skills/quiz-tts/SKILL.md`。
+`voice/sets/<セット名>.md` に台本（問題文と読み）を書き、Gemini 3.8 Flash TTS で読み上げ音声を作る。音声から問題文の各文字の表示時刻を作ってアプリに上げると、GM 画面が音声を流しながら文字を合わせて出す。手順と台本の書き方は `.claude/skills/quiz-tts/SKILL.md`。
 
 ```bash
-cp .env.example .env              # GEMINI_API_KEY を入れる
+cp .env.example .env              # GEMINI_API_KEY（publish には QUIZJAM_URL・ADMIN_PASSPHRASE も）を入れる
 npm run tts -- mondai             # 「問題！」を 1 回だけ生成
-npm run tts -- build sample       # 台本から各問の WAV
-npm run tts -- join sample        # 問題！＋無音＋問題文 の mp3（ffmpeg が必要）
+npm run tts -- build movie        # 台本から各問の WAV
+npm run tts -- join movie         # 問題！＋無音＋問題文 の mp3（ffmpeg が必要）
+npm run tts -- align movie        # 各文字の表示時刻（timing.json。uv が必要）
+npm run tts -- publish movie      # mp3 をアプリに上げ、question-sets/movie.json に書き込む
 npm run test:tts
 ```
 
@@ -60,7 +62,7 @@ npm run test:tts
 - Cloudflare Workers（Hono）: 静的配信、HTTP API、WebSocket 転送
 - Durable Object `Room`（SQLite）: ルームごとのゲーム進行。WebSocket Hibernation、Alarm で締切と24時間後の自動削除
 - D1 `quizjam-db`: 問題セット（企画名・設定・問題。画像は URL で参照）
-- R2 `quizjam-images`: 問題・解説・表紙の画像。`POST /api/images`（合言葉必須）でアップロードし `GET /api/images/<key>` で配信。ブラウザ側で長辺 1600px に縮小してから送る
+- R2 `quizjam-images`: 問題・解説・表紙の画像。`POST /api/images`（合言葉必須）でアップロードし `GET /api/images/<key>` で配信。ブラウザ側で長辺 1600px に縮小してから送る。早押しの問読み音声も同じバケットに `POST /api/audio` で置く
 - React + Vite + Tailwind、lucide-react
 
 ```
@@ -107,4 +109,9 @@ GM 用 PC 1台、スマホ 2台以上で実施する。
 - [ ] 誰も押さないまま不正解のあとキューが空になると、止まった位置から読み上げが再開する
 - [ ] 読み上げ中に管理パネルで読み上げ速度を変えても、表示済みの位置が飛ばない
 - [ ] 回答中に GM をリロードしても「Aさん 回答中」と判定ボタンが復元される
+- [ ] publish した音声付きの問題セット（映画）をインポートして保存し開始すると、タイトルスライドに「早押し ・ 音声付き」と出る
+- [ ] 「読み上げ開始」で GM の PC から「問題！」→問題文が流れ、問題文の文字が声に合わせて出る（2.0 秒ほど後に 1 文字目）
+- [ ] 文の途中・間の直後・「問題！」の最中・全文表示後のそれぞれで押すと、音声と文字が同じ所で止まる
+- [ ] 不正解で再開すると、止まった文字の読み始めから音声が流れ、表示済みの文字は消えない
+- [ ] 読み上げ中に GM をリロードすると「音声を有効にする」が出て、押すと続きから流れる
 - [ ] 絵文字アイコンが UI に無く、Noto Sans JP で表示されている
