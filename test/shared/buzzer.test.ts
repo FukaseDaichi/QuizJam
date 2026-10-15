@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../../src/shared/buzzer";
+import { isFullyVoiced, playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../../src/shared/buzzer";
 
 const T0 = 1_700_000_000_000;
 
@@ -78,5 +78,21 @@ describe("playbackPositionMs", () => {
   it("stays at the segment's position while paused or ready", () => {
     expect(playbackPositionMs(voiced({ status: "paused", positionMs: 2900 }), T0 + 10_000)).toBe(2900);
     expect(playbackPositionMs(voiced({ status: "ready", readingStartedAt: null }), T0 + 10_000)).toBe(0);
+  });
+});
+
+describe("isFullyVoiced", () => {
+  const audio = { url: "/api/audio/a.mp3", revealAtMs: [0] };
+  const q = (withAudio: boolean) => ({ id: "q", type: "anagram" as const, prompt: "あ", answers: ["い"], audio: withAudio ? audio : undefined });
+
+  it("is true only for a buzzer set whose every question has audio", () => {
+    expect(isFullyVoiced("buzzer", [q(true), q(true)])).toBe(true);
+    expect(isFullyVoiced("buzzer", [q(true), q(false)])).toBe(false);
+    expect(isFullyVoiced("anagram", [q(true)])).toBe(false);
+    expect(isFullyVoiced(undefined, [q(true)])).toBe(false);
+  });
+
+  it("is false for a set without questions", () => {
+    expect(isFullyVoiced("buzzer", [])).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import type { Answer, BuzzerState, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionSet, QuestionSetMode, QuestionSettings } from "../shared/types";
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
-import { playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
+import { isFullyVoiced, playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
 import type { BuzzerView, ErrorCode, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
 
 export interface EngineState {
@@ -186,7 +186,7 @@ export class GameEngine {
     const slides = set.introSlides ?? [];
     const i = this.s.introIndex;
     const slide: IntroSlideView = i === 0
-      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode, audio: this.isBuzzer && set.questions.every((q) => !!q.audio) }
+      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode, audio: isFullyVoiced(set.mode, set.questions) }
       : { kind: "slide", heading: slides[i - 1].heading, body: slides[i - 1].body, imageUrl: slides[i - 1].imageUrl };
     return { index: i, total: 1 + slides.length, slide };
   }

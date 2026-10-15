@@ -1,4 +1,4 @@
-import type { BuzzerStatus } from "./types";
+import type { BuzzerStatus, Question, QuestionSetMode } from "./types";
 
 /** 表示済み文字数を求めるのに必要な情報。サーバーの BuzzerState とクライアントの BuzzerView の両方が満たす */
 export interface RevealTimeline {
@@ -15,6 +15,11 @@ export interface RevealTimeline {
 /** 文字数はコードポイント単位。サロゲートペア（絵文字など）を途中で切らない */
 export function promptLength(prompt: string): number {
   return Array.from(prompt).length;
+}
+
+/** 早押しで全問に問読み音声があるか（タイトルスライドに「音声付き」と出す） */
+export function isFullyVoiced(mode: QuestionSetMode | undefined, questions: Pick<Question, "audio">[]): boolean {
+  return mode === "buzzer" && questions.length > 0 && questions.every((q) => !!q.audio);
 }
 
 /** 時刻 now の音声の再生位置 (ms)。reading: 区間の起点 + 経過。ready / paused: 区間の起点のまま */
