@@ -15,6 +15,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   outDir: "voice/out",
   setsDir: "voice/sets",
   questionSetsDir: "question-sets",
+  previewFont: "Meiryo",
   concurrency: 2,
 });
 
@@ -27,7 +28,7 @@ export function validateConfig(raw) {
     if (!(key in DEFAULT_CONFIG)) throw new ConfigError(`config.json に不明なキーがあります: ${key}`);
   }
   const c = { ...DEFAULT_CONFIG, ...raw };
-  for (const key of ["model", "voice", "mondaiText", "sampleText", "outDir", "setsDir", "questionSetsDir"]) {
+  for (const key of ["model", "voice", "mondaiText", "sampleText", "outDir", "setsDir", "questionSetsDir", "previewFont"]) {
     if (!isNonEmptyString(c[key])) throw new ConfigError(`config.json の ${key} は空でない文字列にしてください`);
   }
   if (typeof c.style !== "string") throw new ConfigError("config.json の style は文字列にしてください");

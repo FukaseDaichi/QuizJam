@@ -49,3 +49,8 @@ test("validateConfig: questionSetsDir は既定で question-sets、空文字は�
   assert.equal(validateConfig({}).questionSetsDir, "question-sets");
   assert.throws(() => validateConfig({ questionSetsDir: "" }), ConfigError);
 });
+
+test("validateConfig: previewFont は既定で Meiryo、空文字はエラー", () => {
+  assert.equal(validateConfig({}).previewFont, "Meiryo");
+  assert.throws(() => validateConfig({ previewFont: "" }), ConfigError);
+});

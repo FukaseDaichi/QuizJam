@@ -1,4 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { CommandError, rel, setDir } from "./commands.mjs";
+import { isTimingFresh, loadQuestionSetPrompts, readTiming, sha256File } from "./align.mjs";
 
 /**
  * 確認用動画（preview）の字幕と ffmpeg 呼び出し。
@@ -65,4 +69,44 @@ export function renderPreview({ dir, mp3, ass, out }) {
   const r = spawnSync("ffmpeg", previewArgs({ mp3, ass, out }), { cwd: dir, encoding: "utf8" });
   if (r.error) throw new Error(`ffmpeg を実行できません: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`ffmpeg が失敗しました: ${(r.stderr || "").trim().slice(-500)}`);
+}
+
+/**
+ * timing.json どおりに問題文が現れる確認用動画を voice/out/<set>/preview/Qnn.mp4 に作る（publish 前に目と耳で確かめる用）。
+ * 問題文は問題セットの prompt。timing.json が古い・無い問は作らずに挙げる
+ */
+export async function runPreview(ctx, { setName, only = [] } = {}) {
+  if (!setName) throw new CommandError("セット名を指定してください: preview <セット名>");
+  if (!ctx.ffmpegAvailable()) throw new CommandError("ffmpeg が見つかりません（動画を作るのに使う。https://ffmpeg.org/ から入れて PATH を通す）");
+  const prompts = loadQuestionSetPrompts(ctx, setName);
+  for (const id of only) if (!prompts.has(id)) throw new CommandError(`問題セットに ${id} がありません`);
+  const targets = only.length > 0 ? [...prompts.keys()].filter((id) => only.includes(id)) : [...prompts.keys()];
+  const dir = setDir(ctx, setName);
+  const previewDir = path.join(dir, "preview");
+  const timing = readTiming(path.join(dir, "timing.json"), setName);
+  const result = { rendered: [], stale: [], failed: [] };
+
+  for (const id of targets) {
+    const mp3 = path.join(dir, `${id}.full.mp3`);
+    const prompt = prompts.get(id);
+    const entry = timing.entries[id];
+    if (!fs.existsSync(mp3) || !isTimingFresh(entry, prompt, sha256File(mp3))) {
+      result.stale.push(id);
+      continue;
+    }
+    fs.mkdirSync(previewDir, { recursive: true });
+    fs.writeFileSync(path.join(previewDir, `${id}.ass`), buildPreviewAss({ title: id, prompt, revealAtMs: entry.revealAtMs, font: ctx.config.previewFont }));
+    try {
+      ctx.renderPreview({ dir: previewDir, mp3, ass: `${id}.ass`, out: `${id}.mp4` });
+      result.rendered.push(id);
+      ctx.log(`${id}: ${rel(ctx, path.join(previewDir, `${id}.mp4`))}`);
+    } catch (err) {
+      result.failed.push({ id, error: err.message });
+    }
+  }
+
+  ctx.log(`作成 ${result.rendered.length} / 古い ${result.stale.length} / 失敗 ${result.failed.length}`);
+  if (result.stale.length > 0) ctx.log(`警告: timing.json が古いか無いので飛ばしました: ${result.stale.join(", ")}（先に join と align を実行してください）`);
+  for (const f of result.failed) ctx.log(`失敗: ${f.id}: ${f.error}`);
+  return result;
 }
