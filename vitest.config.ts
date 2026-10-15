@@ -16,6 +16,8 @@ export default defineConfig(async () => {
     test: {
       include: ["test/**/*.test.ts"],
       setupFiles: ["./test/setup/d1.ts"],
+      // workerd 上の統合テストは、全件を並列に流すとまれに数秒止まる（既定の 5 秒で落ちることがあった）
+      testTimeout: 30_000,
     },
   };
 });
