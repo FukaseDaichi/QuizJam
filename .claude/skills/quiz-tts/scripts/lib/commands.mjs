@@ -153,7 +153,7 @@ export async function runJoin(ctx, { setName, only = [] } = {}) {
   const mondai = mondaiPath(ctx);
   if (!fs.existsSync(mondai)) throw new CommandError(`${rel(ctx, mondai)} がありません。先に mondai を実行してください`);
   if (!ctx.ffmpegAvailable()) {
-    ctx.log("警告: ffmpeg が見つからないので結合を飛ばします（https://ffmpeg.org/ から入れて PATH を通す）");
+    ctx.log("警告: ffmpeg が見つからないので結合を飛ばします（https://ffmpeg.org/ から入れて PATH を通すか、.env の FFMPEG_PATH に置き場所を書く）");
     return { joined: [], skipped: [], failed: [], noFfmpeg: true };
   }
   const { questions } = loadSet(ctx, setName);

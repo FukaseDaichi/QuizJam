@@ -2,7 +2,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { requireApiKey, requirePublishEnv, EnvError } from "./lib/env.mjs";
+import { requireApiKey, requirePublishEnv, ffmpegCommand, EnvError } from "./lib/env.mjs";
 import { loadConfig, ConfigError } from "./lib/config.mjs";
 import { synthesize } from "./lib/gemini.mjs";
 import { ScriptError } from "./lib/script.mjs";
@@ -10,7 +10,7 @@ import { ffmpegAvailable, joinQuestion } from "./lib/join.mjs";
 import { CommandError, runMondai, runVoices, runBuild, runJoin } from "./lib/commands.mjs";
 import { runAlign } from "./lib/align.mjs";
 import { runPublish } from "./lib/publish.mjs";
-import { renderPreview, runPreview } from "./lib/preview.mjs";
+import { ffmpegHasSubtitles, renderPreview, runPreview } from "./lib/preview.mjs";
 import { detectSilences } from "./lib/silence.mjs";
 import { alignWords, uvAvailable } from "./lib/whisper.mjs";
 
@@ -48,13 +48,14 @@ async function main() {
   const { values, positionals } = parsed;
   const [command, setName] = positionals;
   const config = loadConfig(ROOT);
+  const ffmpeg = ffmpegCommand(ROOT);
   const ctx = {
     root: ROOT,
     config,
     log: console.log,
     now: () => new Date(),
-    ffmpegAvailable,
-    joinQuestion,
+    ffmpegAvailable: () => ffmpegAvailable(ffmpeg),
+    joinQuestion: (opts) => joinQuestion(opts, ffmpeg),
     synthesize: null,
   };
   const withKey = () => {
@@ -81,7 +82,7 @@ async function main() {
       return r.failed.length > 0 ? 1 : 0;
     }
     case "align": {
-      Object.assign(ctx, { uvAvailable, alignWords, detectSilences });
+      Object.assign(ctx, { uvAvailable, alignWords, detectSilences: (file) => detectSilences(file, ffmpeg) });
       const r = await runAlign(ctx, { setName, only: values.only ?? [], force: values.force });
       if (r.noUv) {
         console.error("エラー: uv が見つかりません。https://docs.astral.sh/uv/ の手順で入れてから、もう一度 align を実行してください");
@@ -90,7 +91,8 @@ async function main() {
       return r.failed.length > 0 ? 1 : 0;
     }
     case "preview": {
-      const r = await runPreview({ ...ctx, renderPreview }, { setName, only: values.only ?? [] });
+      const preview = { ffmpegHasSubtitles: () => ffmpegHasSubtitles(ffmpeg), renderPreview: (opts) => renderPreview(opts, ffmpeg) };
+      const r = await runPreview({ ...ctx, ...preview }, { setName, only: values.only ?? [] });
       return r.failed.length > 0 ? 1 : 0;
     }
     case "publish": {

@@ -3,10 +3,9 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { buildPreviewAss, previewArgs, renderPreview, runPreview, PREVIEW_CHARS_PER_LINE } from "../lib/preview.mjs";
-import { validateConfig } from "../lib/config.mjs";
+import { buildPreviewAss, previewArgs, hasSubtitlesFilter, ffmpegHasSubtitles, renderPreview, runPreview, PREVIEW_CHARS_PER_LINE } from "../lib/preview.mjs";
+import { defaultPreviewFont, validateConfig } from "../lib/config.mjs";
 import { CommandError } from "../lib/commands.mjs";
-import { ffmpegAvailable } from "../lib/join.mjs";
 import { tmpDir, makeWav } from "./helpers.mjs";
 
 /** 問題文の行（Style K）の {\kNN}文字 を [NN, 文字] の並びにする */
@@ -61,6 +60,21 @@ test("previewArgs: 単色の背景に字幕を焼き込み、mp3 を付けて音
   ]);
 });
 
+test("hasSubtitlesFilter: ffmpeg -filters の一覧に subtitles フィルタ（libass）があるか", () => {
+  const without = [
+    " T. drawbox           V->V       Draw a colored box on the input video.",
+    " .. ass               V->V       Render ASS subtitles onto input video using the libass library.",
+    " .. scale             V->V       Scale the input video size and/or convert the image format.",
+  ].join("\n");
+  assert.equal(hasSubtitlesFilter(without), false);
+  assert.equal(hasSubtitlesFilter(`${without}\n .. subtitles         V->V       Render text subtitles onto input video using the libass library.\n`), true);
+  assert.equal(hasSubtitlesFilter(" TSC subtitles         V->V       Render text subtitles\n"), true, "古い ffmpeg の 3 桁の印でもよい");
+});
+
+test("ffmpegHasSubtitles: 実行できない ffmpeg は false", () => {
+  assert.equal(ffmpegHasSubtitles(path.join(tmpDir(), "no-ffmpeg")), false);
+});
+
 const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 const SET = {
   name: "映画", mode: "buzzer", settings: {},
@@ -91,6 +105,7 @@ function setup({ config = {} } = {}) {
   const ctx = {
     root, config: validateConfig(config), log: (s) => logs.push(s),
     ffmpegAvailable: () => true,
+    ffmpegHasSubtitles: () => true,
     renderPreview: (opts) => { renders.push(opts); },
   };
   return { ctx, renders, logs, root, dir };
@@ -104,13 +119,13 @@ test("runPreview: 各問の字幕を preview/ に書き、mp3 と重ねて Qnn.m
   assert.deepEqual(renders[0], { dir: previewDir, mp3: path.join(dir, "Q01.full.mp3"), ass: "Q01.ass", out: "Q01.mp4" });
   const ass = fs.readFileSync(path.join(previewDir, "Q01.ass"), "utf8");
   assert.ok(ass.includes("{\\k200}{\\k30}あ{\\k30}い"));
-  assert.match(ass, /,Meiryo,/);
+  assert.ok(ass.includes(`,${defaultPreviewFont(process.platform)},`));
 });
 
 test("runPreview: config の previewFont を使う", async () => {
-  const { ctx, dir } = setup({ config: { previewFont: "Hiragino Sans" } });
+  const { ctx, dir } = setup({ config: { previewFont: "Yu Gothic" } });
   await runPreview(ctx, { setName: "movie", only: ["Q02"] });
-  assert.match(fs.readFileSync(path.join(dir, "preview", "Q02.ass"), "utf8"), /,Hiragino Sans,/);
+  assert.match(fs.readFileSync(path.join(dir, "preview", "Q02.ass"), "utf8"), /,Yu Gothic,/);
 });
 
 test("runPreview: timing.json が古い・無い問は作らずに挙げる", async () => {
@@ -143,15 +158,32 @@ test("runPreview: ffmpeg が失敗した問は失敗にして、ほかの問は�
 test("runPreview: セット名・ffmpeg・問題セットが無ければ CommandError", async () => {
   const { ctx, root } = setup();
   await assert.rejects(runPreview(ctx, {}), /セット名を指定してください: preview/);
-  await assert.rejects(runPreview({ ...ctx, ffmpegAvailable: () => false }, { setName: "movie" }), /ffmpeg/);
+  await assert.rejects(runPreview({ ...ctx, ffmpegAvailable: () => false }, { setName: "movie" }), /ffmpeg が見つかりません.*FFMPEG_PATH/);
   fs.rmSync(path.join(root, "question-sets", "movie.json"));
   await assert.rejects(runPreview(ctx, { setName: "movie" }), /question-sets\/movie\.json/);
 });
 
-test("renderPreview: ffmpeg で実際に字幕入りの mp4 ができる", { skip: !ffmpegAvailable() && "ffmpeg が無い" }, () => {
+test("runPreview: ffmpeg に subtitles フィルタが無ければ、何も作らずに ffmpeg-full と FFMPEG_PATH を案内する", async () => {
+  const { ctx, renders, dir } = setup();
+  ctx.ffmpegHasSubtitles = () => false;
+  await assert.rejects(runPreview(ctx, { setName: "movie" }), (err) =>
+    err instanceof CommandError
+    && /subtitles フィルタがありません/.test(err.message)
+    && /brew install ffmpeg-full/.test(err.message)
+    && /FFMPEG_PATH=\/opt\/homebrew\/opt\/ffmpeg-full\/bin\/ffmpeg/.test(err.message));
+  assert.equal(renders.length, 0);
+  assert.equal(fs.existsSync(path.join(dir, "preview")), false);
+});
+
+test("renderPreview: 渡された ffmpeg で動かす", () => {
+  const dir = tmpDir();
+  assert.throws(() => renderPreview({ dir, mp3: "q.wav", ass: "q.ass", out: "q.mp4" }, path.join(dir, "no-ffmpeg")), /ffmpeg を実行できません/);
+});
+
+test("renderPreview: ffmpeg で実際に字幕入りの mp4 ができる", { skip: !ffmpegHasSubtitles() && "ffmpeg が無いか、subtitles フィルタ（libass）が無い" }, () => {
   const dir = tmpDir();
   fs.writeFileSync(path.join(dir, "q.wav"), makeWav({ seconds: 1 }));
-  fs.writeFileSync(path.join(dir, "q.ass"), buildPreviewAss({ title: "Q01", prompt: "あいう", revealAtMs: [100, 300, 500], font: "Meiryo" }));
+  fs.writeFileSync(path.join(dir, "q.ass"), buildPreviewAss({ title: "Q01", prompt: "あいう", revealAtMs: [100, 300, 500], font: defaultPreviewFont(process.platform) }));
   renderPreview({ dir, mp3: path.join(dir, "q.wav"), ass: "q.ass", out: "q.mp4" });
   assert.ok(fs.statSync(path.join(dir, "q.mp4")).size > 0);
 });

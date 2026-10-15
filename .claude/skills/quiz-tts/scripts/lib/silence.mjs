@@ -7,8 +7,8 @@ export function silenceArgs(file) {
 }
 
 /** ffmpeg silencedetect で音声ファイルの無音区間 [始まり, 明け]（秒）を取る */
-export function detectSilences(file) {
-  const r = spawnSync("ffmpeg", silenceArgs(file), { encoding: "utf8" });
+export function detectSilences(file, ffmpeg = "ffmpeg") {
+  const r = spawnSync(ffmpeg, silenceArgs(file), { encoding: "utf8" });
   if (r.error) throw new Error(`ffmpeg を実行できません: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`ffmpeg が失敗しました: ${(r.stderr || "").trim().slice(-500)}`);
   return parseSilences(r.stderr);

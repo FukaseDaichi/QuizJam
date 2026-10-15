@@ -39,6 +39,11 @@ export function requireApiKey(rootDir) {
   return key;
 }
 
+/** 使う ffmpeg。環境変数 → .env の FFMPEG_PATH（keg-only の ffmpeg-full など PATH に無いもの）、無ければ PATH の ffmpeg */
+export function ffmpegCommand(rootDir) {
+  return process.env.FFMPEG_PATH || loadEnv(rootDir).FFMPEG_PATH || "ffmpeg";
+}
+
 /** publish の送り先。環境変数 → .env の順で QUIZJAM_URL（末尾の / は外す）と ADMIN_PASSPHRASE を探す */
 export function requirePublishEnv(rootDir) {
   const file = loadEnv(rootDir);

@@ -3,6 +3,13 @@ import path from "node:path";
 
 export class ConfigError extends Error {}
 
+/** preview の字幕の既定フォント。OS に最初から入っている（Linux は fonts-noto-cjk の）日本語フォント */
+export function defaultPreviewFont(platform) {
+  if (platform === "darwin") return "Hiragino Sans";
+  if (platform === "win32") return "Meiryo";
+  return "Noto Sans CJK JP";
+}
+
 export const DEFAULT_CONFIG = Object.freeze({
   model: "gemini-3.8-flash-tts",
   voice: "Kore",
@@ -15,7 +22,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   outDir: "voice/out",
   setsDir: "voice/sets",
   questionSetsDir: "question-sets",
-  previewFont: "Meiryo",
+  previewFont: defaultPreviewFont(process.platform),
   concurrency: 2,
 });
 

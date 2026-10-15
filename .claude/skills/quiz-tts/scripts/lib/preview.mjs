@@ -61,12 +61,23 @@ export function previewArgs({ mp3, ass, out }) {
   ];
 }
 
+/** ffmpeg -filters の一覧に subtitles フィルタ（libass で字幕を焼き込む）があるか */
+export function hasSubtitlesFilter(filtersOutput) {
+  return /^\s*\S+\s+subtitles\s/m.test(filtersOutput);
+}
+
+/** ffmpeg に subtitles フィルタがあるか。実行できなければ false */
+export function ffmpegHasSubtitles(ffmpeg = "ffmpeg") {
+  const r = spawnSync(ffmpeg, ["-hide_banner", "-filters"], { encoding: "utf8" });
+  return !r.error && r.status === 0 && hasSubtitlesFilter(r.stdout);
+}
+
 /**
  * dir で ffmpeg を動かして mp4 を作る。
  * subtitles フィルタの引数は Windows のドライブ文字（C:）の「:」がフィルタの区切りと衝突するので、作業ディレクトリからの相対パスで渡す
  */
-export function renderPreview({ dir, mp3, ass, out }) {
-  const r = spawnSync("ffmpeg", previewArgs({ mp3, ass, out }), { cwd: dir, encoding: "utf8" });
+export function renderPreview({ dir, mp3, ass, out }, ffmpeg = "ffmpeg") {
+  const r = spawnSync(ffmpeg, previewArgs({ mp3, ass, out }), { cwd: dir, encoding: "utf8" });
   if (r.error) throw new Error(`ffmpeg を実行できません: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`ffmpeg が失敗しました: ${(r.stderr || "").trim().slice(-500)}`);
 }
@@ -77,7 +88,16 @@ export function renderPreview({ dir, mp3, ass, out }) {
  */
 export async function runPreview(ctx, { setName, only = [] } = {}) {
   if (!setName) throw new CommandError("セット名を指定してください: preview <セット名>");
-  if (!ctx.ffmpegAvailable()) throw new CommandError("ffmpeg が見つかりません（動画を作るのに使う。https://ffmpeg.org/ から入れて PATH を通す）");
+  if (!ctx.ffmpegAvailable()) throw new CommandError("ffmpeg が見つかりません（動画を作るのに使う。https://ffmpeg.org/ から入れて PATH を通すか、.env の FFMPEG_PATH に置き場所を書く）");
+  // libass の無い ffmpeg は subtitles=Qnn.ass を「Error parsing filterchain」としか言わないので、先に確かめて入れ方を出す
+  if (!ctx.ffmpegHasSubtitles()) {
+    throw new CommandError(
+      "ffmpeg に字幕を焼き込む subtitles フィルタがありません（libass 無しのビルド。Homebrew の ffmpeg がそう）。"
+      + "macOS では brew install ffmpeg-full で libass 入りのものを入れ（keg-only なので PATH には入らない）、"
+      + "リポジトリ直下の .env に FFMPEG_PATH=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg と書いてください（Intel Mac は /usr/local/opt/ffmpeg-full/bin/ffmpeg）。"
+      + "ほかの OS では libass 入りの ffmpeg を入れてください",
+    );
+  }
   const prompts = loadQuestionSetPrompts(ctx, setName);
   for (const id of only) if (!prompts.has(id)) throw new CommandError(`問題セットに ${id} がありません`);
   const targets = only.length > 0 ? [...prompts.keys()].filter((id) => only.includes(id)) : [...prompts.keys()];

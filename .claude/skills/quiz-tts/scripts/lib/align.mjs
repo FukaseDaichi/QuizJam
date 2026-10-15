@@ -60,7 +60,7 @@ export async function runAlign(ctx, { setName, only = [], force = false } = {}) 
   if (!setName) throw new CommandError("セット名を指定してください: align <セット名>");
   const mondai = mondaiPath(ctx);
   if (!fs.existsSync(mondai)) throw new CommandError(`${rel(ctx, mondai)} がありません。先に mondai を実行してください`);
-  if (!ctx.ffmpegAvailable()) throw new CommandError("ffmpeg が見つかりません（無音の検出に使う。https://ffmpeg.org/ から入れて PATH を通す）");
+  if (!ctx.ffmpegAvailable()) throw new CommandError("ffmpeg が見つかりません（無音の検出に使う。https://ffmpeg.org/ から入れて PATH を通すか、.env の FFMPEG_PATH に置き場所を書く）");
   const { questions } = loadSet(ctx, setName);
   const targets = selectQuestions(questions, only);
   const prompts = loadQuestionSetPrompts(ctx, setName);

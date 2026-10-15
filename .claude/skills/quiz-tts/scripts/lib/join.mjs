@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 
-export function ffmpegAvailable() {
-  return spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+export function ffmpegAvailable(ffmpeg = "ffmpeg") {
+  return spawnSync(ffmpeg, ["-version"], { stdio: "ignore" }).status === 0;
 }
 
 /** 問題！ → 無音 pauseMs → 問題文 を concat して mp3 にする ffmpeg の引数 */
@@ -18,8 +18,8 @@ export function ffmpegArgs({ mondaiWav, questionWav, pauseMs, outMp3, sampleRate
   ];
 }
 
-export function joinQuestion(opts) {
-  const r = spawnSync("ffmpeg", ffmpegArgs(opts), { encoding: "utf8" });
+export function joinQuestion(opts, ffmpeg = "ffmpeg") {
+  const r = spawnSync(ffmpeg, ffmpegArgs(opts), { encoding: "utf8" });
   if (r.error) throw new Error(`ffmpeg を実行できません: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`ffmpeg が失敗しました: ${(r.stderr || "").trim().slice(0, 500)}`);
 }

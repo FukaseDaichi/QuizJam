@@ -53,7 +53,7 @@ npm run tts -- mondai             # 「問題！」を 1 回だけ生成
 npm run tts -- build movie        # 台本から各問の WAV
 npm run tts -- join movie         # 問題！＋無音＋問題文 の mp3（ffmpeg が必要）
 npm run tts -- align movie        # 各文字の表示時刻（timing.json。uv が必要）
-npm run tts -- preview movie      # 文字が音声に合わせて出る確認用動画（voice/out/movie/preview/）
+npm run tts -- preview movie      # 文字が音声に合わせて出る確認用動画（voice/out/movie/preview/。libass 入りの ffmpeg が必要。macOS は SKILL.md 参照）
 npm run tts -- publish movie      # mp3 をアプリに上げ、question-sets/movie.json に書き込む
 npm run test:tts
 ```

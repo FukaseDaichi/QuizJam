@@ -54,3 +54,9 @@ test("joinQuestion: 入力が無ければ投げる", { skip: !ffmpegAvailable() 
     /ffmpeg/,
   );
 });
+
+test("ffmpegAvailable・joinQuestion: 渡された ffmpeg を使う", () => {
+  const missing = path.join(tmpDir(), "no-ffmpeg");
+  assert.equal(ffmpegAvailable(missing), false);
+  assert.throws(() => joinQuestion({ mondaiWav: "m.wav", questionWav: "q.wav", pauseMs: 600, outMp3: "o.mp3" }, missing), /ffmpeg を実行できません/);
+});
