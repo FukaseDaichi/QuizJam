@@ -72,7 +72,7 @@ src/
 test/       Vitest（GameEngine 単体、Room / API 統合、クライアント状態）
 migrations/ D1 スキーマ
 docs/       設計書
-voice/      早押し問読み音声の台本（sets/）と生成物（out/: mondai.wav・manifest.json・Qnn.full.mp3・timing.json）
+voice/      早押し問読み音声の台本（sets/）と生成物（out/: mondai.wav・manifest.json・Qnn.full.mp3・timing.json。確認用動画の preview/ は git 管理外）
 .claude/skills/quiz-tts/  問読み音声を Gemini TTS で生成し、文字の表示時刻を作ってアプリに上げる Claude Code スキル（Node 22、依存なし。align だけ uv で Python の stable-ts を使う）
 ```
 

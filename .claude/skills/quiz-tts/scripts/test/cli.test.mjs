@@ -32,3 +32,9 @@ test("CLI: publish はセット名が無ければエラーで終了コード 1",
   assert.equal(r.status, 1);
   assert.match(r.stderr, /セット名を指定してください: publish/);
 });
+
+test("CLI: preview はセット名が無ければエラーで終了コード 1", () => {
+  const r = run("preview");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /セット名を指定してください: preview/);
+});

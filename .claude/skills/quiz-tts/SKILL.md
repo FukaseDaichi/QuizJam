@@ -1,6 +1,6 @@
 ---
 name: quiz-tts
-description: 早押しクイズの問題文から問読み（読み上げ）音声を Gemini 3.8 Flash TTS で生成し、音声に合わせた文字の表示時刻を作って QuizJam に上げる。「問読みの音声を作って」「この問題セットの読み上げを生成して」「台本を書いて音声にして」「声を選びたい」「音声と文字を合わせて」「音声をアプリに入れて」と言われたとき、または voice/sets/ の台本を書いたり直したりするときに使う。アプリのコードには触らない（問題セット JSON に書き込むだけ）。
+description: 早押しクイズの問題文から問読み（読み上げ）音声を Gemini 3.8 Flash TTS で生成し、音声に合わせた文字の表示時刻を作って QuizJam に上げる。「問読みの音声を作って」「この問題セットの読み上げを生成して」「台本を書いて音声にして」「声を選びたい」「音声と文字を合わせて」「文字送りの確認用の動画を作って」「音声をアプリに入れて」と言われたとき、または voice/sets/ の台本を書いたり直したりするときに使う。アプリのコードには触らない（問題セット JSON に書き込むだけ）。
 ---
 
 # quiz-tts: 早押し問読み音声の生成
@@ -16,8 +16,9 @@ description: 早押しクイズの問題文から問読み（読み上げ）音�
 4. `npm run tts -- join <セット名>`（`Qnn.full.mp3` ができる）
 5. 出力の `生成 n / 変更なし n / 失敗 n` と警告（短すぎ・長すぎ）を確認。失敗や警告があれば台本を直して 3 へ
 6. `npm run tts -- align <セット名>`（`timing.json` ができる。問題文は `question-sets/<セット名>.json` の `prompt` を使うので、同じ ID の問題セットが要る）。警告（2 文字以上で長さ 0 の単語・1.5 秒を超える単語、かなに直せない数字）が出た問は、読みをかなで書くなどして 3 へ
-7. 台本・`voice/out/<セット名>/manifest.json`・`Qnn.full.mp3`・`timing.json` をコミットする（`Qnn.wav` は .gitignore 済み）
-8. アプリに入れるときだけ: ユーザーに確認してから `npm run tts -- publish <セット名>`（デプロイ済みのアプリに mp3 を上げ、`question-sets/<セット名>.json` に `audio` を書き込む。`.env` に `QUIZJAM_URL` と `ADMIN_PASSPHRASE` が要る）。書き込んだ JSON をコミットし、管理画面で問題セットの編集画面から「インポート」して保存してもらう。mp3 は publish した先の R2 にしか無いので、取り込む先と同じアプリ（`QUIZJAM_URL`）に publish する
+7. `npm run tts -- preview <セット名>`（`--only Qnn` で数問だけでもよい）で `voice/out/<セット名>/preview/Qnn.mp4` を作り、音声付きで再生して、文字が声に合わせて出るかを見る（ユーザーに見てもらうときはこの動画を送る）。ずれている問は読みを直して 3 へ。動画は git に入れない
+8. 台本・`voice/out/<セット名>/manifest.json`・`Qnn.full.mp3`・`timing.json` をコミットする（`Qnn.wav` は .gitignore 済み）
+9. アプリに入れるときだけ: ユーザーに確認してから `npm run tts -- publish <セット名>`（デプロイ済みのアプリに mp3 を上げ、`question-sets/<セット名>.json` に `audio` を書き込む。`.env` に `QUIZJAM_URL` と `ADMIN_PASSPHRASE` が要る）。書き込んだ JSON をコミットし、管理画面で問題セットの編集画面から「インポート」して保存してもらう。mp3 は publish した先の R2 にしか無いので、取り込む先と同じアプリ（`QUIZJAM_URL`）に publish する
 
 問題セットの `prompt` を直したら、その問は `align` → `publish` をやり直す（タイミング表は問題文の 1 文字ごとに作るため）。
 
@@ -64,6 +65,7 @@ npm run tts -- mondai [--force]                         # 「問題！」を 1 �
 npm run tts -- build <セット名> [--only Qnn] [--force]  # 台本から各問の WAV（変わった問だけ）
 npm run tts -- join <セット名> [--only Qnn]             # 問題！＋無音＋問題文 → Qnn.full.mp3（ffmpeg）
 npm run tts -- align <セット名> [--only Qnn] [--force]  # 各文字の表示時刻 → timing.json（変わった問だけ。uv・ffmpeg）
+npm run tts -- preview <セット名> [--only Qnn]          # timing.json どおりに文字が出る確認用動画 → preview/Qnn.mp4（ffmpeg）
 npm run tts -- publish <セット名>                       # mp3 をアプリに上げ、問題セット JSON に audio を書き込む
 npm run test:tts                                        # スクリプトのテスト
 ```
@@ -86,6 +88,7 @@ npm run test:tts                                        # スクリプトのテ�
 | `pauseMs` | 「問題！」と問題文の間の無音（ms） |
 | `concurrency` | 同時リクエスト数（1〜4） |
 | `questionSetsDir` | 問題セット JSON の置き場所（既定 `question-sets`）。align・publish が `<セット名>.json` を読み書きする |
+| `previewFont` | preview の動画の字幕のフォント（既定 `Meiryo`。macOS なら `Hiragino Sans` など） |
 
 ## 制限
 
