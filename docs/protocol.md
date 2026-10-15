@@ -48,7 +48,7 @@
 | `close` | GM | なし | 現在の問題を手動締切 |
 | `next` | GM | なし | 次へ。`intro` 中は次の説明スライドか第1問へ、`questionResult` 中は次の問題か最終結果へ |
 | `endGame` | GM | なし | ルームをロビーに戻す |
-| `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き全体。送った内容で置き換え、`{}` で解除。`timerMode` は3モードのいずれか、`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`basePoints` / `wrongPenalty` は 0 以上の整数、`rankBonus` は 0 以上の整数の配列（20個まで）、`charsPerSecond` は 1〜30 の整数。出題中なら締切を合わせ直し、変われば `deadlineSet` を送る。早押しの読み上げ中なら区間の起点を取り直してから適用し、`buzzerUpdated` を送る |
+| `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き全体。送った内容で置き換え、`{}` で解除。`timerMode` は3モードのいずれか、`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`basePoints` / `wrongPenalty` は 0 以上の整数、`rankBonus` は 0 以上の整数の配列（20個まで）、`charsPerSecond` は 1〜30 の整数。出題中なら締切を合わせ直し、変われば `deadlineSet` を送る。早押しの読み上げ中なら区間の起点を取り直してから適用し（問読み音声のある問題では取り直さない）、`buzzerUpdated` を送る |
 | `adjustScore` | GM | `{ participantId, delta }` | 参加者の点数を加減 |
 | `kick` | GM | `{ participantId }` | 参加者を退出させる |
 | `startReading` | GM | なし | 早押しの読み上げ（文字送り）開始。`question` かつ早押しモードかつ `ready` のときだけ。問読み音声があれば再生位置 0（「問題！」の頭）から |

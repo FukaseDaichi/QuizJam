@@ -386,10 +386,14 @@ export class GameEngine {
     return this.buzzerView()!;
   }
 
-  /** 読み上げ中なら区間の起点を今に取り直す。charsPerSecond を変える直前に呼び、表示済みの位置が飛ばないようにする */
+  /**
+   * 読み上げ中なら区間の起点を今に取り直す。charsPerSecond を変える直前に呼び、表示済みの位置が飛ばないようにする。
+   * 音声付きの問題は速さが効かないので取り直さない（区間が変わると GM 画面が音声を流し直し、音が途切れる）
+   */
   rebaseReading(now: number): void {
     const b = this.s.buzzer;
     if (!b || this.s.phase !== "question" || b.status !== "reading") return;
+    if (this.timeline(b).revealAtMs) return;
     this.freezeAt(b, now);
     b.readingStartedAt = now;
   }

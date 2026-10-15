@@ -188,8 +188,8 @@ export function GmRoomPage() {
         )}
         {state.phase === "question" && buzzerMode && buzzer?.status === "paused" && buzzer.queue.length > 0 && (
           <>
-            <Button variant="success" size="lg" icon={Check} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: true })}>正解</Button>
-            <Button variant="danger" size="lg" icon={X} onClick={() => send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: false })}>不正解</Button>
+            <Button variant="success" size="lg" icon={Check} onClick={() => { unlockAudio(); send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: true }); }}>正解</Button>
+            <Button variant="danger" size="lg" icon={X} onClick={() => { unlockAudio(); send({ type: "judge", participantId: buzzer.queue[0].participantId, correct: false }); }}>不正解</Button>
           </>
         )}
         {state.phase === "question" && <Button variant="secondary" size="lg" icon={Square} onClick={() => send({ type: "close" })}>締切</Button>}

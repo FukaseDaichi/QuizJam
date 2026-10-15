@@ -817,11 +817,11 @@ describe("GameEngine buzzer mode with question audio", () => {
     expect(e.buzzerView()).toMatchObject({ status: "reading", readingStartedAt: T0 + 4000, revealedChars: 4, positionMs: 2700 });
   });
 
-  it("a charsPerSecond change rebases the playback position but does not change the pace", () => {
+  it("a settings change neither rebases the segment (no audio restart) nor changes the pace", () => {
     e.startReading(T0);
     e.rebaseReading(T0 + 2500);
     e.setSettingsOverride({ charsPerSecond: 30 });
-    expect(e.buzzerView()).toMatchObject({ readingStartedAt: T0 + 2500, revealedChars: 3, positionMs: 2500 });
+    expect(e.buzzerView()).toMatchObject({ readingStartedAt: T0, revealedChars: 0, positionMs: 0 });
     e.buzz("p1", T0 + 2700);                     // 2700ms → 4 文字（30 文字/秒なら全部出ている）
     expect(e.buzzerView()).toMatchObject({ revealedChars: 4, positionMs: 2700 });
   });

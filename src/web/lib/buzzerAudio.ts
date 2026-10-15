@@ -51,9 +51,11 @@ export function useBuzzerAudio(buffer: AudioBuffer | null, buzzer: BuzzerView | 
 
   useEffect(() => {
     if (!buffer || ctxState !== "running") return;
-    const startMs = audioStartMs(buzzer, Date.now() + clockOffsetMs);
-    if (startMs === null || startMs / 1000 >= buffer.duration) return;
     const c = audioContext();
+    // 出力の遅れ（Bluetooth では 0.1〜0.3 秒）の分だけ先から流す。取れない環境では 0
+    const latencyMs = ((c.outputLatency || c.baseLatency || 0) as number) * 1000;
+    const startMs = audioStartMs(buzzer, Date.now() + clockOffsetMs, latencyMs);
+    if (startMs === null || startMs / 1000 >= buffer.duration) return;
     const source = c.createBufferSource();
     source.buffer = buffer;
     source.connect(c.destination);

@@ -28,3 +28,12 @@ describe("audioStartMs", () => {
     expect(audioStartMs(view({ positionMs: 2300, revealedChars: 3 }), T0 - 50)).toBe(2300);
   });
 });
+
+describe("audioStartMs with output latency", () => {
+  it("starts ahead by the output latency so the sound reaches the room in step with the text", () => {
+    expect(audioStartMs(view({ positionMs: 2300, revealedChars: 3 }), T0 + 100, 150)).toBe(2550);
+  });
+  it("still does not play while paused", () => {
+    expect(audioStartMs(view({ status: "paused", readingStartedAt: null }), T0, 150)).toBeNull();
+  });
+});
