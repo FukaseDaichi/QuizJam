@@ -172,6 +172,9 @@ describe("Room DO game flow", () => {
     expect(fin.entries[0]).toMatchObject({ nickname: "みさき", score: 150 });
 
     gm.send({ type: "endGame" });
+    // send は送りっぱなしなので、反映（全員への state）を待ってからつなぎ直す。
+    // 待たないと、再接続の方が先に届いて finalResult の state が返ることがある
+    await gm.waitFor("state", (m) => m.phase === "lobby");
     // 再接続で state が lobby になっていること
     const gm2 = await connect("GAME01", "gm-token");
     expect((await gm2.waitFor("state")).phase).toBe("lobby");
