@@ -16,7 +16,7 @@ description: 早押しクイズの問題文から問読み（読み上げ）音�
 4. `npm run tts -- join <セット名>`（`Qnn.full.mp3` ができる）
 5. 出力の `生成 n / 変更なし n / 失敗 n` と警告（短すぎ・長すぎ）を確認。失敗や警告があれば台本を直して 3 へ
 6. `npm run tts -- align <セット名>`（`timing.json` ができる。問題文は `question-sets/<セット名>.json` の `prompt` を使うので、同じ ID の問題セットが要る）。警告（2 文字以上で長さ 0 の単語・1.5 秒を超える単語、かなに直せない数字）が出た問は、読みをかなで書くなどして 3 へ
-7. `npm run tts -- preview <セット名>`（`--only Qnn` で数問だけでもよい）で `voice/out/<セット名>/preview/Qnn.mp4` を作り、音声付きで再生して、文字が声に合わせて出るかを見る（ユーザーに見てもらうときはこの動画を送る）。ずれている問は読みを直して 3 へ。動画は git に入れない
+7. `npm run tts -- preview <セット名>`（`--only Qnn` で数問だけでもよい）で `voice/out/<セット名>/preview/Qnn.mp4` を作り、音声付きで再生して、文字が声に合わせて出るかを見る（ユーザーに見てもらうときはこの動画を送る。libass 入りの ffmpeg が要る。下の「コマンド」の ffmpeg の項を参照）。ずれている問は読みを直して 3 へ。動画は git に入れない
 8. 台本・`voice/out/<セット名>/manifest.json`・`Qnn.full.mp3`・`timing.json` をコミットする（`Qnn.wav` は .gitignore 済み）
 9. アプリに入れるときだけ: ユーザーに確認してから `npm run tts -- publish <セット名>`（デプロイ済みのアプリに mp3 を上げ、`question-sets/<セット名>.json` に `audio` を書き込む。`.env` に `QUIZJAM_URL` と `ADMIN_PASSPHRASE` が要る）。書き込んだ JSON をコミットし、管理画面で問題セットの編集画面から「インポート」して保存してもらう。mp3 は publish した先の R2 にしか無いので、取り込む先と同じアプリ（`QUIZJAM_URL`）に publish する
 
@@ -68,7 +68,7 @@ npm run tts -- mondai [--force]                         # 「問題！」を 1 �
 npm run tts -- build <セット名> [--only Qnn] [--force]  # 台本から各問の WAV（変わった問だけ）
 npm run tts -- join <セット名> [--only Qnn]             # 問題！＋無音＋問題文 → Qnn.full.mp3（ffmpeg）
 npm run tts -- align <セット名> [--only Qnn] [--force]  # 各文字の表示時刻 → timing.json（変わった問だけ。uv・ffmpeg）
-npm run tts -- preview <セット名> [--only Qnn]          # timing.json どおりに文字が出る確認用動画 → preview/Qnn.mp4（ffmpeg）
+npm run tts -- preview <セット名> [--only Qnn]          # timing.json どおりに文字が出る確認用動画 → preview/Qnn.mp4（libass 入りの ffmpeg）
 npm run tts -- publish <セット名>                       # mp3 をアプリに上げ、問題セット JSON に audio を書き込む
 npm run test:tts                                        # スクリプトのテスト
 ```
@@ -77,6 +77,8 @@ npm run test:tts                                        # スクリプトのテ�
 - 声を変えたいとき: `voices` で聴き比べ → `voice/config.json` の `voice` を変更 → `mondai --force` → `build <セット名>`（ハッシュに声が入っているので全問が再生成される）→ `join`
 - 間の長さは `voice/config.json` の `pauseMs`（ms）。変えたら mp3 を消して `join` → `align`
 - `align` は台本の読み（数字はかなに直す）を `Qnn.wav` に強制アライメントし（`align/` の Python。stable-ts + Whisper small）、間の後の読み始めを無音の明けに寄せ、問題セットの問題文と文字単位で対応づける。時刻は `Qnn.full.mp3` の頭（「問題！」の頭）からの ms。初回は uv が Python 環境（torch などで数百 MB。Linux では GPU 版の torch が入って数 GB になることがある）を作り、Whisper small（約 460 MB）をダウンロードする。uv が無ければ終了コード 2
+- ffmpeg は PATH の `ffmpeg` を使う。リポジトリ直下の `.env`（または環境変数）に `FFMPEG_PATH=<ffmpeg のパス>` を書くと、join・align・preview のすべてでそれを使う
+- `preview` は字幕の焼き込みに `subtitles` フィルタ（libass）のある ffmpeg が要る。無ければ何も作らずに入れ方を出して終了コード 1。macOS の Homebrew の `ffmpeg` には libass が無いので、ユーザーに確認してから `brew install ffmpeg-full` を入れ（keg-only なので PATH の `ffmpeg` は置き換わらない）、`.env` に `FFMPEG_PATH=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg`（Intel Mac は `/usr/local/opt/ffmpeg-full/bin/ffmpeg`）を書く。確かめるには `ffmpeg -hide_banner -filters | grep subtitles`
 - `publish` は timing.json が古い・無い問が 1 つでもあれば何も上げずに終了コード 1。アップロードに失敗した問があれば JSON は書き換えない。publish の途中で問題セット JSON が書き換えられた場合も上書きせずに終了コード 1（もう一度 publish する）
 
 ## 設定（voice/config.json）
@@ -91,7 +93,7 @@ npm run test:tts                                        # スクリプトのテ�
 | `pauseMs` | 「問題！」と問題文の間の無音（ms） |
 | `concurrency` | 同時リクエスト数（1〜4） |
 | `questionSetsDir` | 問題セット JSON の置き場所（既定 `question-sets`）。align・publish が `<セット名>.json` を読み書きする |
-| `previewFont` | preview の動画の字幕のフォント（既定 `Meiryo`。macOS なら `Hiragino Sans` など） |
+| `previewFont` | preview の動画の字幕のフォント。既定は OS ごと（macOS `Hiragino Sans`、Windows `Meiryo`、Linux `Noto Sans CJK JP`）。`voice/config.json` は共有なので、ふつうは書かない |
 
 ## 制限
 

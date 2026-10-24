@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { parseDotenv, loadEnv, requireApiKey, requirePublishEnv, EnvError } from "../lib/env.mjs";
+import { parseDotenv, loadEnv, requireApiKey, requirePublishEnv, ffmpegCommand, EnvError } from "../lib/env.mjs";
 import { tmpDir } from "./helpers.mjs";
 
 test("parseDotenv: コメント・空行・引用符を扱う", () => {
@@ -50,4 +50,18 @@ test("requirePublishEnv: どちらかが無ければ EnvError", () => {
   fs.writeFileSync(path.join(dir, ".env"), "QUIZJAM_URL=https://quizjam.example.workers.dev\n");
   delete process.env.ADMIN_PASSPHRASE;
   assert.throws(() => requirePublishEnv(dir), (err) => err instanceof EnvError && /ADMIN_PASSPHRASE/.test(err.message));
+});
+
+test("ffmpegCommand: 環境変数 → .env の FFMPEG_PATH、どちらも無ければ PATH の ffmpeg", () => {
+  const dir = tmpDir();
+  delete process.env.FFMPEG_PATH;
+  assert.equal(ffmpegCommand(dir), "ffmpeg");
+  fs.writeFileSync(path.join(dir, ".env"), "FFMPEG_PATH=/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg\n");
+  assert.equal(ffmpegCommand(dir), "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg");
+  process.env.FFMPEG_PATH = "C:/ffmpeg/bin/ffmpeg.exe";
+  try {
+    assert.equal(ffmpegCommand(dir), "C:/ffmpeg/bin/ffmpeg.exe");
+  } finally {
+    delete process.env.FFMPEG_PATH;
+  }
 });

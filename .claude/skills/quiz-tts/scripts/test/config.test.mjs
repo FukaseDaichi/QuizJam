@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_CONFIG, validateConfig, loadConfig, ConfigError } from "../lib/config.mjs";
+import { DEFAULT_CONFIG, defaultPreviewFont, validateConfig, loadConfig, ConfigError } from "../lib/config.mjs";
 import { tmpDir } from "./helpers.mjs";
 
 test("validateConfig: 空なら既定値", () => {
@@ -50,7 +50,13 @@ test("validateConfig: questionSetsDir は既定で question-sets、空文字は�
   assert.throws(() => validateConfig({ questionSetsDir: "" }), ConfigError);
 });
 
-test("validateConfig: previewFont は既定で Meiryo、空文字はエラー", () => {
-  assert.equal(validateConfig({}).previewFont, "Meiryo");
+test("defaultPreviewFont: OS に入っている日本語フォントを選ぶ", () => {
+  assert.equal(defaultPreviewFont("darwin"), "Hiragino Sans");
+  assert.equal(defaultPreviewFont("win32"), "Meiryo");
+  assert.equal(defaultPreviewFont("linux"), "Noto Sans CJK JP");
+});
+
+test("validateConfig: previewFont は既定でこの OS のフォント、空文字はエラー", () => {
+  assert.equal(validateConfig({}).previewFont, defaultPreviewFont(process.platform));
   assert.throws(() => validateConfig({ previewFont: "" }), ConfigError);
 });
