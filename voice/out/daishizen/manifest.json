@@ -1,0 +1,496 @@
+{
+  "version": 1,
+  "set": "daishizen",
+  "entries": {
+    "Q01": {
+      "hash": "d58f0f4fa505d618e903bdd0975efac101a96ca287edd185f9bac4a90e1c93a9",
+      "durationMs": 16320,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:19:30.264Z"
+    },
+    "Q02": {
+      "hash": "265444e405999370c610af47147fbeb240e70d12a627902bf38a1a3ab6fb260d",
+      "durationMs": 17720,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:19:29.884Z"
+    },
+    "Q03": {
+      "hash": "00f3c1e06217b814d721ee370e4c9389e60f3655f7d5de7837e1558a1c19faed",
+      "durationMs": 18400,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:19:39.813Z"
+    },
+    "Q04": {
+      "hash": "6560ce39be10190d8bb09a228c4b05d0e2b61e4261ea0207e5f92c94342dfafb",
+      "durationMs": 21200,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:19:50.387Z"
+    },
+    "Q05": {
+      "hash": "ea37e0f9d07313e3ad0247540bc84a0f3cedabe2a45e90c912c9b577f838df61",
+      "durationMs": 20160,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:00.018Z"
+    },
+    "Q06": {
+      "hash": "51b5f461c1d62f0501df749292b523cf4f27996e52e6e67770726d9998d471ef",
+      "durationMs": 14000,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:08.757Z"
+    },
+    "Q07": {
+      "hash": "079e34ac602c832550806102151b0fcfa93485f7ed1bf536b7672168cae8c614",
+      "durationMs": 15720,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:17.144Z"
+    },
+    "Q08": {
+      "hash": "cc37febf3a13a7b8451a8e2a86b29f94edab91f74515dda574237f440d02b145",
+      "durationMs": 13160,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:25.708Z"
+    },
+    "Q09": {
+      "hash": "81c9a50ba65cc29729bf6db970c043a43c6a3429c2772d05ec578027e0b74bf6",
+      "durationMs": 18200,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:34.791Z"
+    },
+    "Q10": {
+      "hash": "173cc8911df4c6e888077ac47f6dc1c0ad576b7b25ac9550476ad834c056bc10",
+      "durationMs": 16680,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:43.607Z"
+    },
+    "Q11": {
+      "hash": "c4f9dc803f46be121bd15a0c5fb40edc741903e9a102e92e3a40b25a93a52eca",
+      "durationMs": 15160,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:51.345Z"
+    },
+    "Q12": {
+      "hash": "03e4e4b4135fedb25e2b75f1ea32d544b319ad1d12ea4fc84860cda6f2c4f44a",
+      "durationMs": 14360,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:20:59.448Z"
+    },
+    "Q13": {
+      "hash": "b8798fa51e06d4ef0ebd0833426d26442f95c7de32a6500b6cc5667cdccb3efb",
+      "durationMs": 15880,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:21:08.160Z"
+    },
+    "Q14": {
+      "hash": "01268ca8bedb95ef2fd7311316032fea74e480ae8a79314a902f7331b10b79be",
+      "durationMs": 16240,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:21:16.974Z"
+    },
+    "Q15": {
+      "hash": "d78892529aa81a19e4afe8f11994e3ed210779d0fd0b62c3eb06159067a87fbc",
+      "durationMs": 17040,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:21:26.151Z"
+    },
+    "Q16": {
+      "hash": "035288a88d7e7f88e9a70f0caa7431ac7d76e84c6cbb793d3e4721116dfc25b2",
+      "durationMs": 13240,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:21:34.300Z"
+    },
+    "Q17": {
+      "hash": "0e6bb850e031d1cfe05f56a738968eeffc4c45d4c676e4fd79c472b3a599fb05",
+      "durationMs": 15720,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:21:42.452Z"
+    },
+    "Q18": {
+      "hash": "f9ba168d1a912d570505f452d2459d0257b04b4c07ea6727bb3a8c86f96dc244",
+      "durationMs": 16320,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:21:51.168Z"
+    },
+    "Q19": {
+      "hash": "afaeeea82ed0114b9c4086c21d6d229f4d4e9a026e4f23b9abad42062c4a322e",
+      "durationMs": 19800,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:22:04.500Z"
+    },
+    "Q20": {
+      "hash": "e056442e25adcfc483196706a1e26aedf455ace7ced494cd13e56eaebaf06fff",
+      "durationMs": 18400,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:22:13.789Z"
+    },
+    "Q21": {
+      "hash": "b638cb9b89e343902144c547a0cf6a9c7e1b0d594ef0c3514224e90bdcddd2a1",
+      "durationMs": 18280,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:22:22.453Z"
+    },
+    "Q22": {
+      "hash": "e0701680a931d8ca41d30748d5a1923543d02717788f93407e27d8a7a98293f4",
+      "durationMs": 23000,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:22:32.632Z"
+    },
+    "Q23": {
+      "hash": "e92e67d03c3df25ff988cf92eea3f7d5ccb6857ddfaef52949fc1ececf98ffec",
+      "durationMs": 16640,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:22:41.367Z"
+    },
+    "Q24": {
+      "hash": "f48ab2da007fd2410fc43af75aa554954175cabaad6e8aa1e026ccca848b3d10",
+      "durationMs": 19080,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:22:50.594Z"
+    },
+    "Q25": {
+      "hash": "9b1f2182ce4bb2ca4d8a4f539111af68967569e4759b43ed38e8dc5f1f69a4d5",
+      "durationMs": 17720,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:22:58.655Z"
+    },
+    "Q26": {
+      "hash": "2c7cd949900214200382b3692b96437998eefa4d29c186e8b70a486938917e6e",
+      "durationMs": 21000,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:23:08.420Z"
+    },
+    "Q27": {
+      "hash": "a2fd61de93091276e97b82497f717c8f73530043d3e8828339808ffedceb3536",
+      "durationMs": 15640,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:23:16.967Z"
+    },
+    "Q28": {
+      "hash": "3c4dae4b3daf17b200864425bb3f6343e95dc9b3c18c7fad9f530a6b5b0efd86",
+      "durationMs": 13840,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:23:25.244Z"
+    },
+    "Q29": {
+      "hash": "98f25f4deb23eaa50aa003adaad7ef6bd1cbcec04057163a4ca4613dce9f210e",
+      "durationMs": 18840,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:23:34.446Z"
+    },
+    "Q30": {
+      "hash": "8566a7e620d0cf587c973c2ab899e059ffecdb73f336dc0a99f7d72df4e8e9d1",
+      "durationMs": 22160,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:23:44.881Z"
+    },
+    "Q31": {
+      "hash": "88b6974fd967ed3173ee3b9b39521d426dc43e8354e421a9882a84420684323f",
+      "durationMs": 16000,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:23:53.233Z"
+    },
+    "Q32": {
+      "hash": "fe69473746f36926034ea854c64b5678c9fed8471659b6f4678ead482d6fae53",
+      "durationMs": 7760,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:23:59.832Z"
+    },
+    "Q33": {
+      "hash": "432ea3c2123003648443d4fbe86cd38b760c7e2cc6cc8731821fcd1db720ad79",
+      "durationMs": 20480,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:24:09.501Z"
+    },
+    "Q34": {
+      "hash": "d0917e04e4386122c47c640c9080e9ba913fd43d58cd8067eba2269b907535d7",
+      "durationMs": 18160,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:24:18.685Z"
+    },
+    "Q35": {
+      "hash": "4f2c57c5a8c7c91aed8c0cb97262ff7d8a11c9a9cf5bae46b2f3d397d44b03a0",
+      "durationMs": 16200,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:24:27.441Z"
+    },
+    "Q36": {
+      "hash": "4f561b7970a27310873c3776b619565e17ecb3edda13c59025216dbe1c033319",
+      "durationMs": 24480,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:24:38.277Z"
+    },
+    "Q37": {
+      "hash": "29f3f4d35aea457ce8f79923870f7013a1b90bdc329cfea97b7220d34f3a38ec",
+      "durationMs": 21120,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:24:48.216Z"
+    },
+    "Q38": {
+      "hash": "890d22784fab2128c744487d6fbf3888c218f93b341d9c72e5a2e8b958d593c8",
+      "durationMs": 24160,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:24:57.955Z"
+    },
+    "Q39": {
+      "hash": "3b4ec4e152b133dc5719dc8df837b70ae23e414f6b4693d85716289c22ec10f8",
+      "durationMs": 22320,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:25:08.150Z"
+    },
+    "Q40": {
+      "hash": "65833a9ed4702bc28933552fca548d2573ddece0cce92ad51be25ff9494a2e31",
+      "durationMs": 23400,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:25:18.614Z"
+    },
+    "Q41": {
+      "hash": "995ef108767d75f0c81b3bc6082555e103b8d335f7e3c055319b0c6882516d9a",
+      "durationMs": 17560,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:25:26.786Z"
+    },
+    "Q42": {
+      "hash": "b01778fe973e07845934b4e6d98eb8a5418ceecc7cebe2a9caed3ec00e3e6859",
+      "durationMs": 17880,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:25:35.312Z"
+    },
+    "Q43": {
+      "hash": "b318659259d13ff8db096b53d3a0c4a592d30bdbb46fa47f1cc4c977062a8f1a",
+      "durationMs": 18560,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:25:44.190Z"
+    },
+    "Q44": {
+      "hash": "12f5354103e240c8b53ea13ace05483261b6899e5f4e3a101a4667d6c1fe1b34",
+      "durationMs": 17440,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:25:52.277Z"
+    },
+    "Q45": {
+      "hash": "316b2ec7203c03ee19f52b5da64d5b67e47f7db65dd1952bb7d439aaffa6a2dd",
+      "durationMs": 18080,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:26:02.033Z"
+    },
+    "Q46": {
+      "hash": "4125e5779f131d1d1bcd465c7c26a7660b53dcc79e33e48312af581dc2a0da77",
+      "durationMs": 18680,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:26:11.135Z"
+    },
+    "Q47": {
+      "hash": "4d5a065242593ecbc3f4de2595720f7f6e5f029c768a22cce4163cad26b7c2ce",
+      "durationMs": 16920,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:26:19.507Z"
+    },
+    "Q48": {
+      "hash": "ce1e115dd3e4cd651f7fac133e0a892654b61a7c7081c9e914f79e079e27b11d",
+      "durationMs": 16440,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:26:27.914Z"
+    },
+    "Q49": {
+      "hash": "032c9a2d3bba3d75ed7c60309598568eec32f6d9bf1493b9dfbd5d8dbdb34323",
+      "durationMs": 18680,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:26:36.627Z"
+    },
+    "Q50": {
+      "hash": "a8c8ddb4e41b41f0afc79928f5d67c53473d4c7df2efb25d995faaaa02845744",
+      "durationMs": 17760,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:26:45.684Z"
+    },
+    "Q51": {
+      "hash": "3d7ab3d89c1530d776a224ebd99ab751f96540d14a18ec293a8e97f55301299e",
+      "durationMs": 17920,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:26:54.237Z"
+    },
+    "Q52": {
+      "hash": "27c55d4cc498ff14be87273232791243e4725aa2f2065729fc71b4df94c39479",
+      "durationMs": 17520,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:03.332Z"
+    },
+    "Q53": {
+      "hash": "eb827ad19c8fa8123977a3b8d00f51eab8a1acc74712548a05ccebf42a43c4e7",
+      "durationMs": 14800,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:11.155Z"
+    },
+    "Q54": {
+      "hash": "157fdbe5c96af82487e34461d5f1a2914ae3bdda083f7c47af6ddaabdacd4897",
+      "durationMs": 17840,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:20.007Z"
+    },
+    "Q55": {
+      "hash": "41fd4f8ea3387e559796f0b6a57829ea5d6cd2622fa4715afd5ee7a5dac63010",
+      "durationMs": 16080,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:28.370Z"
+    },
+    "Q56": {
+      "hash": "28cfd84c6f1cd5d8a622900220fcf4f218a17972a907c38166fb1f6a735dcd0a",
+      "durationMs": 15480,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:36.298Z"
+    },
+    "Q57": {
+      "hash": "5a51704fd3ba7d11c073a9c81a84759956c765850ba105a4c84dfc72102e650b",
+      "durationMs": 16080,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:44.148Z"
+    },
+    "Q58": {
+      "hash": "191d6908ad08b8bab1933034270c53edeefb2aa2e65a014cd0cc12a6f3c7afd8",
+      "durationMs": 12200,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:51.688Z"
+    },
+    "Q59": {
+      "hash": "ea29905930a3f229b6b1b97ff98310320d7006acc1bd341183737f5b72a51bee",
+      "durationMs": 14440,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:27:59.517Z"
+    },
+    "Q60": {
+      "hash": "87d6c063b183541dee47abcaa97a7819993f635b8da7e4e9aef720a00d1e2879",
+      "durationMs": 16360,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:28:07.837Z"
+    },
+    "Q61": {
+      "hash": "e3bddfc6c006368fe23a037ac794154f0fa2370ad110a61c62ddab1f970fa3a5",
+      "durationMs": 10520,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:28:15.396Z"
+    },
+    "Q62": {
+      "hash": "b04b9448dc0758bfbab2293cd4d97108fcf8a2cbc98fb5715f7baf5daa33d0ba",
+      "durationMs": 17240,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:28:24.396Z"
+    },
+    "Q63": {
+      "hash": "10548232a7c016049b78679536fa2daebb531e91d37c59b136af477e713263b0",
+      "durationMs": 14360,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:28:32.544Z"
+    },
+    "Q64": {
+      "hash": "7bfa7562178c6cd9b175a561c795fa4325c076429471c4db18e24fc043683027",
+      "durationMs": 17640,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:28:41.593Z"
+    },
+    "Q65": {
+      "hash": "bfa0f30a690f9026b5433497899cc7ef143d27512ad18a98a26c5f9bac2a5356",
+      "durationMs": 16080,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:28:50.339Z"
+    },
+    "Q66": {
+      "hash": "c764323712dfa9f1b4aaccaa77da21dfca7103bc8b76cd5d0163a06bb9831689",
+      "durationMs": 18640,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:28:59.341Z"
+    },
+    "Q67": {
+      "hash": "6c443782aa05e1f2907c49f89b6ffef05218ec03de2513f9dca16e9926cb071f",
+      "durationMs": 17600,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:29:07.800Z"
+    },
+    "Q68": {
+      "hash": "ea728ca20a949c7ed8b0be1dde23f3f1cc079803cd9b0811ff691005a2004b0e",
+      "durationMs": 18200,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:29:16.220Z"
+    },
+    "Q69": {
+      "hash": "42dcef1d9ccb49c94e0073d162e6826a852841b2f1909bc19fc00ebc76120b2d",
+      "durationMs": 14240,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:29:24.426Z"
+    },
+    "Q70": {
+      "hash": "7661fe53aede637421b5f60f91a130b138880743608994ed247b51b82fcbef61",
+      "durationMs": 15160,
+      "voice": "Kore",
+      "model": "gemini-3.8-flash-tts",
+      "generatedAt": "2026-11-22T19:29:33.248Z"
+    }
+  }
+}
