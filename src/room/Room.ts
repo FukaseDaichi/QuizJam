@@ -200,6 +200,8 @@ export class Room extends DurableObject<Env> {
         if (!set || set.questions.length === 0) return this.sendError(ws, "question_set_not_found", "問題セットが見つかりません");
         const intro = engine.start(set, msg.carryOverScores);
         this.save();
+        // start は参加者の得意ジャンルなどを初期化するので、まず役割ごとの全状態を配って前のゲームの表示を置き換えさせる
+        this.broadcastState();
         this.broadcast({ type: "introStarted", intro });
         this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
         // 開始で初めて「実際に効く設定」が決まるので配る（GM 管理パネルの表示用）

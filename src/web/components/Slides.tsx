@@ -58,7 +58,7 @@ export function QuestionSlidePreview({ question, index, total, settings, backgro
     <SlideFrame>
       <div className={`flex h-full flex-col px-[4cqw] py-[3cqw] ${light ? "text-slate-800" : ""}`} style={background ? { backgroundColor: background } : undefined}>
         <div className={`flex items-center justify-between text-[2.4cqw] font-bold ${light ? "text-slate-500" : "text-slate-400"}`}>
-          <span>第{index + 1}問 / {total}問{genre && <span className={`ml-[1.6cqw] rounded-[1.2cqw] px-[1.6cqw] py-[0.4cqw] ${light ? "bg-slate-200 text-slate-700" : "bg-slate-700 text-slate-200"}`}>{genre}</span>}</span>
+          <span>第{index + 1}問 / {total}問{genre && <span className={`ml-[1.6cqw] inline-block max-w-[40cqw] truncate align-bottom rounded-[1.2cqw] px-[1.6cqw] py-[0.4cqw] ${light ? "bg-slate-200 text-slate-700" : "bg-slate-700 text-slate-200"}`}>{genre}</span>}</span>
           {!compact && !buzzer && settings.timerMode !== "none" && (
             <span className="inline-flex items-center gap-[0.6cqw] rounded-[1.2cqw] bg-amber-100 px-[1.6cqw] py-[0.4cqw] text-amber-900">
               <Timer className="h-[2.4cqw] w-[2.4cqw]" aria-hidden />{settings.timerSeconds}<span className="text-[1.6cqw]">秒</span>

@@ -915,6 +915,18 @@ describe("GameEngine genre mode", () => {
     expect(asked(e)).toEqual([4]);
   });
 
+  it("when the correct answerer is kicked during questionResult, next opens a random question instead of genreSelect", () => {
+    const e = setup(stub(0.99, 0));
+    e.next(T0);
+    answerCorrect(e);
+    e.removeParticipant("p1", T0 + 250);
+    const r = e.next(T0 + 300);
+    expect(r.kind).toBe("question");
+    if (r.kind !== "question") return;
+    expect(r.question.randomGenre).toBe(true);
+    expect(asked(e)).toHaveLength(2);
+  });
+
   it("moves to genreSelect with the correct answerer as picker", () => {
     const e = setup(stub(0.99, 0));
     e.next(T0);

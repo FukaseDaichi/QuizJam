@@ -287,6 +287,15 @@ describe("buzzer mode", () => {
     expect(applyServerMessage(sel, { type: "introStarted", intro }, T0).genreSelect).toBeNull();
   });
 
+  it("a state message replaces participants and me, dropping specialties from the previous game", () => {
+    let s = withState();
+    s = applyServerMessage(s, { type: "specialtiesChosen", participant: { id: "p1", nickname: "みさき", score: 0, connected: true, specialties: ["歴史", "地理"] } }, T0);
+    expect(s.me?.specialties).toEqual(["歴史", "地理"]);
+    s = applyServerMessage(s, { ...baseState, phase: "intro" }, T0);
+    expect(s.me?.specialties).toBeUndefined();
+    expect(s.participants.every((p) => p.specialties === undefined)).toBe(true);
+  });
+
   it("specialtiesChosen upserts the participant and updates me", () => {
     let s = withState();
     s = applyServerMessage(s, { type: "specialtiesChosen", participant: { id: "p2", nickname: "たろう", score: 0, connected: true, specialties: ["歴史", "理科"] } }, T0);

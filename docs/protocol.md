@@ -44,7 +44,7 @@
 | type | 送信者 | payload | 内容 |
 |---|---|---|---|
 | `answer` | 参加者 | `{ text }` | 回答送信 |
-| `start` | GM | `{ questionSetId, carryOverScores }` | ゲーム開始。`lobby` か `finalResult` のときのみ |
+| `start` | GM | `{ questionSetId, carryOverScores }` | ゲーム開始。`lobby` か `finalResult` のときのみ。参加者の得意ジャンルを初期化するので、全員に役割ごとの `state` を送り直してから `introStarted` などを送る |
 | `close` | GM | なし | 現在の問題を手動締切 |
 | `next` | GM | なし | 次へ。`intro` 中は次の説明スライドか第1問へ、`questionResult` 中は次の問題か最終結果へ（ジャンル制では正解者がジャンルを選ぶ `genreSelect` へ進むこともある） |
 | `endGame` | GM | なし | ルームをロビーに戻す |
@@ -54,7 +54,7 @@
 | `startReading` | GM | なし | 早押しの読み上げ（文字送り）開始。`question` かつ早押しモードかつ `ready` のときだけ。問読み音声があれば再生位置 0（「問題！」の頭）から |
 | `buzz` | 参加者 | なし | 早押し。受理は `buzzerUpdated` の `queue` で分かる |
 | `judge` | GM | `{ participantId, correct: boolean }` | 回答中の参加者を判定。`participantId` が回答中の人（キューの先頭）と違えば `invalid_state`（ボタンの二度押しで次の人まで判定されないため） |
-| `chooseSpecialties` | 参加者 | `{ genres: string[] }` | ジャンル制の得意ジャンルの決定（1 人 1 回）。個数は 2（残りのあるジャンルが 2 つ未満ならその数）、重複・存在しない・問題が尽きたジャンルは `bad_specialties`、2 回目は `specialties_already_set`。ジャンル制でない・ロビー・最終結果では `invalid_state`。GM は `forbidden` |
+| `chooseSpecialties` | 参加者 | `{ genres: string[] }` | ジャンル制の得意ジャンルの決定（1 人 1 回）。個数は 2（残りのあるジャンルが 2 つ未満ならその数）。3 つ以上はパーサーが `bad_message` で弾き、足りない・重複・存在しない・問題が尽きたジャンルは `bad_specialties`、2 回目は `specialties_already_set`。ジャンル制でない・ロビー・最終結果では `invalid_state`。GM は `forbidden` |
 | `pickGenre` | 選ぶ人・GM | `{ genre: string \| null }` | `genreSelect` 中のジャンル指定。指定したジャンルの未出題から無作為に 1 問を開く。選ぶ人は文字列だけ送れる（本人以外・`null` は `forbidden`）。GM は任意のジャンルか、`null`（ランダムで決める）。残り 0 のジャンル・存在しないジャンルは `genre_unavailable`。`genreSelect` 以外では `invalid_state` |
 | `finish` | GM | なし | 途中終了。`question`・`questionResult`・`genreSelect` のとき最終結果へ進む（`finalResult` を送る）。それ以外は `invalid_state` |
 

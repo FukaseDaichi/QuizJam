@@ -922,6 +922,23 @@ describe("Room DO genre mode", () => {
     expect((await gm.waitFor("error")).code).toBe("invalid_state");
   });
 
+  it.each([false, true])("second game in the same room resets specialties on clients (carryOverScores %s) and accepts new picks", async (carry) => {
+    const { gm, c1, c2, p1, genres } = await setup(`GEN13${carry ? "C" : "N"}`, { specialties: true });
+    gm.send({ type: "finish" });
+    for (const c of [gm, c1, c2]) await c.waitFor("finalResult");
+    const set2 = await seedGenreSet();
+    gm.send({ type: "start", questionSetId: set2.id, carryOverScores: carry });
+    for (const c of [gm, c1, c2]) {
+      const st = await c.waitFor("state");
+      expect(st.phase).toBe("intro");
+      expect(st.participants.every((p) => p.specialties === undefined)).toBe(true);
+      expect(st.me?.specialties).toBeUndefined();
+      expect(st.genres).toHaveLength(3);
+    }
+    c1.send({ type: "chooseSpecialties", genres: [genres[0], genres[2]] });
+    expect((await gm.waitFor("specialtiesChosen", (m) => m.participant.id === p1.participantId)).participant.specialties).toEqual([genres[0], genres[2]]);
+  });
+
   it("starting a non-genre set broadcasts genreUpdated with null", async () => {
     const set = await seedSet();
     await initRoom("GEN12");

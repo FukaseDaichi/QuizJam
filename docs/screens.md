@@ -101,7 +101,7 @@ localStorage に `quizjam:` プレフィックスで保存する。
 
 サーバーからのメッセージは1つの reducer で `ClientState` に反映する。画面はこの状態とフェーズだけを見て描画し、メッセージを直接扱わない。
 
-- `state` 受信で全体を置き換え、`serverTime` との差を時計補正値として持つ
+- `state` 受信で全体（参加者一覧と自分の `specialties` を含む）を置き換え、`serverTime` との差を時計補正値として持つ。`start` でも全員に送られ、前のゲームの得意ジャンルを消す
 - `introStarted` で `intro` を置き、問題と結果を消す。タイトルスライドから企画名も取り込む。`questionStarted` で `intro` を消す
 - `questionStarted` で自分の回答状況・前回の判定結果・正解者数をリセットする
 - `buzzerUpdated` で `buzzer` を置き、`questionStarted` / `questionClosed` / `introStarted` / `finalResult` で消す。表示済み文字数はクライアントが補正済みの時刻で共有の式（`revealedCount`）から計算し、`buzzerUpdated` で区間の起点が置き換わると押された位置で揃う
