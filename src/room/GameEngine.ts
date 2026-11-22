@@ -447,6 +447,18 @@ export class GameEngine {
     return { kind: "question", question: this.currentQuestionView()! };
   }
 
+  /** GM による途中終了。出題中・結果表示中・ジャンル選択中から最終結果へ。スコアと回答はそのまま */
+  finish(): LeaderboardEntry[] {
+    const p = this.s.phase;
+    if (p !== "question" && p !== "questionResult" && p !== "genreSelect") throw new Error("cannot finish in this phase");
+    this.s.phase = "finalResult";
+    this.s.buzzer = null;
+    this.s.genrePick = null;
+    this.s.deadlineAt = null;
+    this.s.questionStartedAt = null;
+    return this.leaderboard();
+  }
+
   endGame(): void {
     this.s.genrePick = null;
     this.s.phase = "lobby";

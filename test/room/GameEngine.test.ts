@@ -1068,6 +1068,75 @@ describe("GameEngine genre mode", () => {
     expect(GameEngine.create("ABC123").genres()).toBeNull();
   });
 
+  describe("finish", () => {
+    function expectFinished(e: GameEngine) {
+      const s = e.snapshot();
+      expect(e.phase).toBe("finalResult");
+      expect(s.buzzer).toBeNull();
+      expect(s.genrePick).toBeNull();
+      expect(s.deadlineAt).toBeNull();
+      expect(s.questionStartedAt).toBeNull();
+    }
+
+    it("finish() goes to finalResult from question, questionResult and genreSelect", () => {
+      const q = setup(stub(0.99, 0, 0));
+      q.next(T0);
+      const entries = q.finish();
+      expectFinished(q);
+      expect(entries).toEqual(q.leaderboard());
+
+      const r = setup(stub(0.99, 0, 0));
+      r.next(T0);
+      r.closeQuestion(T0 + 100);
+      expect(r.phase).toBe("questionResult");
+      r.finish();
+      expectFinished(r);
+
+      const g = setup(stub(0.99, 0, 0));
+      g.next(T0);
+      answerCorrect(g);
+      g.next(T0 + 300);
+      expect(g.phase).toBe("genreSelect");
+      g.finish();
+      expectFinished(g);
+    });
+
+    it("finish() keeps points already awarded (anagram mid-question)", () => {
+      const e = GameEngine.create("ABC123");
+      e.addParticipant("p1", "みさき");
+      e.addParticipant("p2", "たろう");
+      startQuestions(e, makeSet(), false, T0);
+      e.submitAnswer("p1", "りんご", T0 + 1);
+      const before = e.getParticipant("p1")!.score;
+      expect(before).toBeGreaterThan(0);
+      const answers = e.snapshot().answers;
+      const entries = e.finish();
+      expectFinished(e);
+      expect(e.getParticipant("p1")!.score).toBe(before);
+      expect(e.snapshot().answers).toEqual(answers);
+      expect(entries[0]).toMatchObject({ nickname: "みさき", score: before });
+    });
+
+    it("finish() throws in lobby, intro and finalResult", () => {
+      const e = GameEngine.create("ABC123");
+      e.addParticipant("p1", "みさき");
+      expect(() => e.finish()).toThrow("cannot finish in this phase");
+      e.start(genreSet(), false);
+      expect(() => e.finish()).toThrow("cannot finish in this phase");
+      e.next(T0);
+      e.finish();
+      expect(() => e.finish()).toThrow("cannot finish in this phase");
+    });
+
+    it("a new game can start after finish()", () => {
+      const e = setup(stub(0.99, 0, 0));
+      e.next(T0);
+      e.finish();
+      expect(e.start(genreSet(), true).slide).toMatchObject({ kind: "title" });
+      expect(e.phase).toBe("intro");
+    });
+  });
+
   describe("specialties", () => {
     /** 第 1 問（ジャンル C。rng 0.99 → C）を開いた状態 */
     function open() { const e = setup(stub(0.99, 0, 0), false); e.next(T0); return e; }
