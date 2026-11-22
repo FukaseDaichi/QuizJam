@@ -1,4 +1,5 @@
-import type { BuzzerView, ErrorCode, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
+import type { BuzzerView, ErrorCode, GenreSelectView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
+import type { GenreCount } from "../../shared/genre";
 import type { LeaderboardEntry, Participant, Phase } from "../../shared/types";
 
 export interface ClientState {
@@ -15,7 +16,7 @@ export interface ClientState {
   me: (Participant & { status: MyAnswerStatus | null }) | null;
   questionSetName: string | null;
   lastAnswerResult: Extract<ServerMessage, { type: "answerResult" }> | null;
-  popups: { id: number; nickname: string; correctRank: number; points: number; at: number }[];
+  popups: { id: number; nickname: string; correctRank: number; points: number; multiplier?: number; at: number }[];
   finalEntries: LeaderboardEntry[] | null;
   lastError: { code: ErrorCode; message: string; at: number } | null;
   clockOffsetMs: number;
@@ -23,6 +24,8 @@ export interface ClientState {
   settings: SettingsView;
   kicked: boolean; // GM に退出させられた（参加者のみ）
   buzzer: BuzzerView | null; // 早押しモードで出題中のみ
+  genres: GenreCount[] | null; // ジャンル制のときだけ。ジャンルごとの残り問題数
+  genreSelect: GenreSelectView | null; // genreSelect フェーズのみ
 }
 
 export const initialClientState: ClientState = {
@@ -32,7 +35,7 @@ export const initialClientState: ClientState = {
   correctCountThisQuestion: 0,
   settings: { override: {}, effective: null, mode: null },
   kicked: false,
-  buzzer: null,
+  buzzer: null, genres: null, genreSelect: null,
 };
 
 let popupSeq = 0;
@@ -60,7 +63,7 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
         lastAnswerResult: null, clockOffsetMs: msg.serverTime - nowMs,
         correctCountThisQuestion: msg.correctCount,
         settings: msg.settings,
-        buzzer: msg.buzzer,
+        buzzer: msg.buzzer, genres: msg.genres, genreSelect: msg.genreSelect,
       };
     case "participantJoined":
     case "participantLeft":
@@ -78,14 +81,14 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
     case "introStarted":
       return {
         ...s, phase: "intro", intro: msg.intro, question: null, questionResult: null, lastAnswerResult: null, finalEntries: null,
-        correctCountThisQuestion: 0, buzzer: null,
+        correctCountThisQuestion: 0, buzzer: null, genreSelect: null,
         // タイトルスライドが企画名を運ぶ。再接続せずに開始を見た接続でも名前が分かる
         questionSetName: msg.intro.slide.kind === "title" ? msg.intro.slide.name : s.questionSetName,
       };
     case "questionStarted":
       return {
         ...s, phase: "question", intro: null, question: msg.question, questionResult: null, lastAnswerResult: null, finalEntries: null,
-        correctCountThisQuestion: 0, buzzer: null,
+        correctCountThisQuestion: 0, buzzer: null, genreSelect: null,
         me: s.me ? { ...s.me, status: { attemptsUsed: 0, correct: false, correctRank: null } } : null,
       };
     case "deadlineSet":
@@ -100,7 +103,7 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
       return { ...s, lastAnswerResult: msg, me: s.me ? { ...s.me, status } : null };
     }
     case "someoneCorrect": {
-      const popup = { id: ++popupSeq, nickname: msg.nickname, correctRank: msg.correctRank, points: msg.points, at: nowMs };
+      const popup = { id: ++popupSeq, nickname: msg.nickname, correctRank: msg.correctRank, points: msg.points, multiplier: msg.multiplier, at: nowMs };
       return { ...s, popups: [...s.popups, popup].slice(-5), correctCountThisQuestion: s.correctCountThisQuestion + 1 };
     }
     case "leaderboard": {
@@ -115,9 +118,18 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
     case "questionClosed":
       return { ...s, phase: "questionResult", questionResult: msg.result, buzzer: null };
     case "finalResult":
-      return { ...s, phase: "finalResult", finalEntries: msg.entries, leaderboard: msg.entries, question: null, questionResult: null, buzzer: null };
+      return { ...s, phase: "finalResult", finalEntries: msg.entries, leaderboard: msg.entries, question: null, questionResult: null, buzzer: null, genreSelect: null };
     case "buzzerUpdated":
       return { ...s, buzzer: msg.buzzer };
+    case "genreUpdated":
+      return { ...s, genres: msg.genres };
+    case "genreSelectStarted":
+      return { ...s, phase: "genreSelect", genreSelect: msg.select, question: null, questionResult: null, buzzer: null, lastAnswerResult: null };
+    case "specialtiesChosen":
+      return {
+        ...s, participants: upsertParticipant(s.participants, msg.participant),
+        me: s.me && s.me.id === msg.participant.id ? { ...s.me, specialties: msg.participant.specialties } : s.me,
+      };
     case "error":
       return { ...s, lastError: { code: msg.code, message: msg.message, at: nowMs } };
     default:

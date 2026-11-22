@@ -246,4 +246,62 @@ describe("buzzer mode", () => {
     s = applyServerMessage(s, { type: "finalResult", entries: [] }, T0);
     expect(s.buzzer).toBeNull();
   });
+
+  it("state message carries genres and genreSelect", () => {
+    const select = { picker: { participantId: "p1", nickname: "みさき" }, genres: [{ genre: "歴史", remaining: 2 }] };
+    const s = applyServerMessage(withState(), { ...baseState, phase: "genreSelect", genres: select.genres, genreSelect: select }, T0);
+    expect(s.genres).toEqual(select.genres);
+    expect(s.genreSelect).toEqual(select);
+  });
+
+  it("genreUpdated sets genres", () => {
+    const genres = [{ genre: "歴史", remaining: 2 }, { genre: "理科", remaining: 0 }];
+    let s = applyServerMessage(withState(), { type: "genreUpdated", genres }, T0);
+    expect(s.genres).toEqual(genres);
+    s = applyServerMessage(s, { type: "genreUpdated", genres: null }, T0);
+    expect(s.genres).toBeNull();
+  });
+
+  it("genreSelectStarted enters genreSelect and clears question state", () => {
+    let s = withState();
+    s = applyServerMessage(s, { type: "questionStarted", question: { index: 0, number: 1, total: 3, mode: "buzzer" as const, prompt: "x", deadlineAt: null, maxAttempts: null } }, T0);
+    s = applyServerMessage(s, { type: "answerResult", correct: true, correctRank: 1, remainingAttempts: 0, points: 100 }, T0);
+    s = { ...s, questionResult: { } as ClientState["questionResult"], buzzer: { } as ClientState["buzzer"] };
+    const select = { picker: { participantId: "p1", nickname: "みさき" }, genres: [{ genre: "歴史", remaining: 2 }] };
+    s = applyServerMessage(s, { type: "genreSelectStarted", select }, T0);
+    expect(s.phase).toBe("genreSelect");
+    expect(s.genreSelect).toEqual(select);
+    expect(s.question).toBeNull();
+    expect(s.questionResult).toBeNull();
+    expect(s.buzzer).toBeNull();
+    expect(s.lastAnswerResult).toBeNull();
+  });
+
+  it("questionStarted, finalResult and introStarted clear genreSelect", () => {
+    const select = { picker: { participantId: "p1", nickname: "みさき" }, genres: [{ genre: "歴史", remaining: 2 }] };
+    const sel = applyServerMessage(withState(), { type: "genreSelectStarted", select }, T0);
+    const q = applyServerMessage(sel, { type: "questionStarted", question: { index: 0, number: 1, total: 1, mode: "buzzer" as const, prompt: "x", deadlineAt: null, maxAttempts: null } }, T0);
+    expect(q.genreSelect).toBeNull();
+    expect(applyServerMessage(sel, { type: "finalResult", entries: [] }, T0).genreSelect).toBeNull();
+    const intro: IntroView = { slide: { kind: "title", name: "n" } } as IntroView;
+    expect(applyServerMessage(sel, { type: "introStarted", intro }, T0).genreSelect).toBeNull();
+  });
+
+  it("specialtiesChosen upserts the participant and updates me", () => {
+    let s = withState();
+    s = applyServerMessage(s, { type: "specialtiesChosen", participant: { id: "p2", nickname: "たろう", score: 0, connected: true, specialties: ["歴史", "理科"] } }, T0);
+    expect(s.participants.find((p) => p.id === "p2")?.specialties).toEqual(["歴史", "理科"]);
+    expect(s.me?.specialties).toBeUndefined();
+    s = applyServerMessage(s, { type: "specialtiesChosen", participant: { id: "p1", nickname: "みさき", score: 0, connected: true, specialties: ["歴史", "地理"] } }, T0);
+    expect(s.participants.find((p) => p.id === "p1")?.specialties).toEqual(["歴史", "地理"]);
+    expect(s.me?.specialties).toEqual(["歴史", "地理"]);
+    expect(s.me?.status).toBeNull();
+  });
+
+  it("someoneCorrect carries the multiplier into the popup", () => {
+    let s = applyServerMessage(withState(), { type: "someoneCorrect", participantId: "p1", nickname: "みさき", correctRank: 1, points: 200, multiplier: 2 }, T0);
+    expect(s.popups[0].multiplier).toBe(2);
+    s = applyServerMessage(s, { type: "someoneCorrect", participantId: "p2", nickname: "たろう", correctRank: 2, points: 100 }, T0);
+    expect(s.popups[1].multiplier).toBeUndefined();
+  });
 });
