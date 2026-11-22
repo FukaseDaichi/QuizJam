@@ -5,7 +5,7 @@ import type { BuzzerView } from "../../src/shared/messages";
 const T0 = 1_700_000_000_000;
 
 function view(over: Partial<BuzzerView> = {}): BuzzerView {
-  return { status: "reading", readingStartedAt: T0, revealedChars: 0, positionMs: 0, promptLength: 5, charsPerSecond: 6, queue: [], lockedOut: [], ...over };
+  return { status: "reading", readingStartedAt: T0, revealedChars: 0, positionMs: 0, promptLength: 5, charsPerSecond: 6, queue: [], lockedOut: [], sittingOut: [], ...over };
 }
 
 describe("audioStartMs", () => {

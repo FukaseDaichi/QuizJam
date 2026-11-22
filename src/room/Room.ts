@@ -411,6 +411,10 @@ export class Room extends DurableObject<Env> {
       case "locked_out": return "この問題はもう押せません";
       case "already_buzzed": return "すでに押しています";
       case "genre_unavailable": return "そのジャンルは選べません";
+      case "specialties_required": return "先に得意ジャンルを選んでください";
+      case "sitting_out": return "次の問題から参加できます";
+      case "specialties_already_set": return "得意ジャンルは変更できません";
+      case "bad_specialties": return "得意ジャンルの選び方が正しくありません";
     }
   }
 }

@@ -574,7 +574,7 @@ describe("GameEngine buzzer mode", () => {
     expect(view.mode).toBe("buzzer");
     expect(view.deadlineAt).toBeNull();
     expect(e.buzzerView()).toEqual({
-      status: "ready", readingStartedAt: null, revealedChars: 0, positionMs: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [],
+      status: "ready", readingStartedAt: null, revealedChars: 0, positionMs: 0, promptLength: 15, charsPerSecond: 5, queue: [], lockedOut: [], sittingOut: [],
     });
     expect(e.reconcileDeadline(T0 + 1000)).toEqual({ changed: false, deadlineAt: null });
   });
@@ -889,11 +889,13 @@ describe("GameEngine genre mode", () => {
     };
   }
   const stub = (...values: number[]) => { let i = 0; return () => values[i++ % values.length]; };
-  function setup(rng: () => number) {
+  /** specialize が true なら、イントロ中に全員が得意ジャンル（A, B）を選んだ状態にする */
+  function setup(rng: () => number, specialize = true) {
     const e = GameEngine.create("ABC123", rng);
     e.addParticipant("p1", "みさき");
     e.addParticipant("p2", "たろう");
     e.start(genreSet(), false);
+    if (specialize) { e.chooseSpecialties("p1", ["A", "B"]); e.chooseSpecialties("p2", ["A", "B"]); }
     return e;
   }
   /** 読み上げ → 早押し → 正解にして questionResult へ */
@@ -1064,5 +1066,221 @@ describe("GameEngine genre mode", () => {
     const ni = n.start(makeSet(), false);
     expect(ni.slide).not.toHaveProperty("genreCount");
     expect(GameEngine.create("ABC123").genres()).toBeNull();
+  });
+
+  describe("specialties", () => {
+    /** 第 1 問（ジャンル C。rng 0.99 → C）を開いた状態 */
+    function open() { const e = setup(stub(0.99, 0, 0), false); e.next(T0); return e; }
+
+    it("accepts exactly two distinct genres once", () => {
+      const e = open();
+      expect(e.chooseSpecialties("p1", ["A"])).toEqual({ kind: "rejected", code: "bad_specialties" });
+      expect(e.chooseSpecialties("p1", ["A", "A"])).toEqual({ kind: "rejected", code: "bad_specialties" });
+      expect(e.chooseSpecialties("p1", ["A", "無い"])).toEqual({ kind: "rejected", code: "bad_specialties" });
+      const r = e.chooseSpecialties("p1", ["A", "B"]);
+      expect(r).toMatchObject({ kind: "accepted", participant: { id: "p1", specialties: ["A", "B"] } });
+      expect(e.getParticipant("p1")!.specialties).toEqual(["A", "B"]);
+      expect(e.chooseSpecialties("p1", ["A", "B"])).toEqual({ kind: "rejected", code: "specialties_already_set" });
+      expect(e.chooseSpecialties("ghost", ["A", "B"])).toEqual({ kind: "rejected", code: "forbidden" });
+    });
+
+    it("rejects choosing in lobby, finalResult, and on non-genre sets", () => {
+      const lobby = GameEngine.create("ABC123");
+      lobby.addParticipant("p1", "みさき");
+      expect(lobby.chooseSpecialties("p1", ["A", "B"])).toEqual({ kind: "rejected", code: "invalid_state" });
+      const g = GameEngine.create("ABC123", stub(0));
+      g.addParticipant("p1", "みさき");
+      g.start(genreSet(), false);
+      g.endGame();
+      expect(g.chooseSpecialties("p1", ["A", "B"])).toEqual({ kind: "rejected", code: "invalid_state" });
+      const f = setup(stub(0.99, 0, 0, 0, 0, 0));
+      f.next(T0);
+      f.closeQuestion(T0 + 100);
+      for (let r = f.next(T0 + 200); r.kind !== "final"; r = f.next(T0 + 200)) {
+        if (r.kind === "genreSelect") f.pickGenre("gm", null, T0 + 300);
+        f.closeQuestion(T0 + 400);
+      }
+      expect(f.phase).toBe("finalResult");
+      expect(f.chooseSpecialties("p1", ["A", "B"])).toEqual({ kind: "rejected", code: "invalid_state" });
+      const n = GameEngine.create("ABC123");
+      n.addParticipant("p1", "みさき");
+      startQuestions(n, makeSet(), false, T0);
+      expect(n.chooseSpecialties("p1", ["A", "B"])).toEqual({ kind: "rejected", code: "invalid_state" });
+    });
+
+    it("cannot choose an exhausted genre", () => {
+      const e = open();   // C は出題済みで残り 0
+      expect(e.chooseSpecialties("p1", ["A", "C"])).toEqual({ kind: "rejected", code: "bad_specialties" });
+      expect(e.chooseSpecialties("p1", ["A", "B"]).kind).toBe("accepted");
+    });
+
+    it("needs fewer picks when fewer genres remain", () => {
+      const e = setup(stub(0.99, 0, 0));
+      e.next(T0);
+      answerCorrect(e);
+      e.addParticipant("p3", "ケン");
+      e.next(T0 + 300);
+      e.pickGenre("gm", "A", T0 + 400);          // A の 1 問目
+      answerCorrect(e);
+      e.next(T0 + 600);
+      e.pickGenre("gm", "A", T0 + 700);          // A 使い切り → 残りは B だけ
+      e.closeQuestion(T0 + 800);
+      expect(e.genres()!.filter((g) => g.remaining > 0).map((g) => g.genre)).toEqual(["B"]);
+      expect(e.chooseSpecialties("p3", ["B", "A"])).toEqual({ kind: "rejected", code: "bad_specialties" });
+      expect(e.chooseSpecialties("p3", ["B"]).kind).toBe("accepted");
+    });
+
+    it("accepts an empty pick when no genre remains", () => {
+      const e = open();
+      // 最終問の出題中: 全問を出題済みにする
+      for (let i = 0; i < 4; i++) { e.closeQuestion(T0 + 10 * i); e.next(T0 + 10 * i + 1); if (e.phase === "genreSelect") e.pickGenre("gm", null, T0 + 10 * i + 2); }
+      expect(e.phase).toBe("question");
+      expect(e.genres()!.every((g) => g.remaining === 0)).toBe(true);
+      expect(e.chooseSpecialties("p1", [])).toMatchObject({ kind: "accepted", participant: { specialties: [] } });
+      expect(e.chooseSpecialties("p2", ["A"])).toEqual({ kind: "rejected", code: "bad_specialties" });
+    });
+
+    it("refuses buzzes until specialties are chosen", () => {
+      const e = open();
+      e.startReading(T0 + 10);
+      expect(e.buzz("p1", T0 + 20)).toEqual({ kind: "rejected", code: "specialties_required" });
+      // not_reading より先に見る
+      const f = open();
+      expect(f.buzz("p1", T0 + 20)).toEqual({ kind: "rejected", code: "specialties_required" });
+    });
+
+    it("choosing during a question sits that question out and plays from the next", () => {
+      const e = open();
+      e.startReading(T0 + 10);
+      e.chooseSpecialties("p1", ["A", "B"]);
+      expect(e.buzz("p1", T0 + 20)).toEqual({ kind: "rejected", code: "sitting_out" });
+      expect(e.buzzerView()!.sittingOut).toEqual(["p1"]);
+      e.closeQuestion(T0 + 30);
+      e.next(T0 + 40);
+      e.pickGenre("gm", "A", T0 + 50);
+      expect(e.buzzerView()!.sittingOut).toEqual([]);
+      e.startReading(T0 + 60);
+      expect(e.buzz("p1", T0 + 70)).toEqual({ kind: "accepted", position: 1 });
+    });
+
+    it("choosing during intro / questionResult / genreSelect allows buzzing on the next question", () => {
+      const e = setup(stub(0.99, 0, 0), false);
+      expect(e.chooseSpecialties("p1", ["A", "B"]).kind).toBe("accepted");   // intro（ジャンル C は未出題なので 3 つ中から）
+      e.next(T0);
+      e.startReading(T0 + 10);
+      expect(e.buzz("p1", T0 + 20)).toEqual({ kind: "accepted", position: 1 });
+      e.judge("p1", true, T0 + 30);
+      e.next(T0 + 40);                                                         // genreSelect
+      expect(e.chooseSpecialties("p2", ["A", "B"]).kind).toBe("accepted");
+      e.pickGenre("gm", "A", T0 + 50);
+      e.startReading(T0 + 60);
+      expect(e.buzz("p2", T0 + 70)).toEqual({ kind: "accepted", position: 1 });
+      e.judge("p2", false, T0 + 80);
+      e.closeQuestion(T0 + 90);
+      // questionResult 中に選んでも次の問題から押せる
+      const f = open();
+      f.closeQuestion(T0 + 5);
+      expect(f.chooseSpecialties("p1", ["A", "B"]).kind).toBe("accepted");
+      expect(f.snapshot().buzzer).toBeNull();
+      f.next(T0 + 10);
+      f.pickGenre("gm", "A", T0 + 20);
+      f.startReading(T0 + 30);
+      expect(f.buzz("p1", T0 + 40)).toEqual({ kind: "accepted", position: 1 });
+    });
+
+    it("doubles points off-specialty and not on-specialty", () => {
+      // 得意（A）の問題に 1 倍で正解
+      const a = setup(stub(0, 0, 0), false);
+      a.chooseSpecialties("p1", ["A", "B"]);
+      a.next(T0);
+      a.startReading(T0 + 10); a.buzz("p1", T0 + 20);
+      const ra = a.judge("p1", true, T0 + 30);
+      expect(ra).toMatchObject({ kind: "correct", points: 100, multiplier: 1 });
+      expect(a.getParticipant("p1")!.score).toBe(100);
+      expect(a.questionResult()!.results[0].multiplier).toBeUndefined();
+      // 得意でない問題に 2 倍で正解
+      const b = setup(stub(0, 0, 0), false);
+      b.chooseSpecialties("p1", ["B", "C"]);
+      b.next(T0);
+      b.startReading(T0 + 10); b.buzz("p1", T0 + 20);
+      const rb = b.judge("p1", true, T0 + 30);
+      expect(rb).toMatchObject({ kind: "correct", points: 200, multiplier: 2 });
+      expect(b.getParticipant("p1")!.score).toBe(200);
+      expect(b.questionResult()!.results[0]).toMatchObject({ points: 200, multiplier: 2 });
+    });
+
+    it("does not double the wrong penalty", () => {
+      const e = GameEngine.create("ABC123", stub(0, 0, 0));
+      e.addParticipant("p1", "みさき");
+      e.start({ ...genreSet(), settings: { ...DEFAULT_SETTINGS, wrongPenalty: 50 } }, false);
+      e.chooseSpecialties("p1", ["B", "C"]);
+      e.next(T0);
+      e.startReading(T0 + 10); e.buzz("p1", T0 + 20);
+      expect(e.judge("p1", false, T0 + 30)).toMatchObject({ kind: "wrong", points: -50 });
+      expect(e.getParticipant("p1")!.score).toBe(-50);
+    });
+
+    it("auto-close ignores participants who cannot press", () => {
+      const n = setup(stub(0, 0, 0), false);
+      n.next(T0);
+      expect(n.allParticipantsDone()).toBe(false);   // 全員未選択（対象 0 人）
+      const e = setup(stub(0, 0, 0), false);
+      e.chooseSpecialties("p1", ["A", "B"]);
+      e.next(T0);
+      e.startReading(T0 + 10);
+      e.buzz("p1", T0 + 20);
+      expect(e.allParticipantsDone()).toBe(false);   // 回答中
+      e.judge("p1", false, T0 + 30);
+      expect(e.allParticipantsDone()).toBe(true);    // p2 は未選択
+      // 出題中に選んだ人は今の問題の対象外
+      const f = setup(stub(0, 0, 0), false);
+      f.chooseSpecialties("p1", ["A", "B"]);
+      f.next(T0);
+      f.startReading(T0 + 10);
+      f.chooseSpecialties("p2", ["A", "B"]);
+      f.buzz("p1", T0 + 20);
+      f.judge("p1", false, T0 + 30);
+      expect(f.allParticipantsDone()).toBe(true);
+      // 切断した人も対象外
+      const g = setup(stub(0, 0, 0), false);
+      g.chooseSpecialties("p1", ["A", "B"]);
+      g.chooseSpecialties("p2", ["A", "B"]);
+      g.next(T0);
+      g.setConnected("p2", false);
+      g.startReading(T0 + 10); g.buzz("p1", T0 + 20); g.judge("p1", false, T0 + 30);
+      expect(g.allParticipantsDone()).toBe(true);
+    });
+
+    it("removing a participant also clears them from sittingOut", () => {
+      const e = open();
+      e.chooseSpecialties("p1", ["A", "B"]);
+      expect(e.buzzerView()!.sittingOut).toEqual(["p1"]);
+      e.removeParticipant("p1", T0 + 1);
+      expect(e.buzzerView()!.sittingOut).toEqual([]);
+    });
+
+    it("a new game clears specialties and asked", () => {
+      const e = setup(stub(0.99, 0, 0));
+      e.next(T0);
+      answerCorrect(e);
+      const score = e.getParticipant("p1")!.score;
+      e.endGame();
+      e.start(genreSet(), true);
+      expect(e.getParticipant("p1")!.specialties).toBeUndefined();
+      expect(e.getParticipant("p1")!.score).toBe(score);
+      expect(e.snapshot().asked).toEqual([]);
+    });
+
+    it("non-genre buzzer sets need no specialties and never double", () => {
+      const e = GameEngine.create("ABC123");
+      e.addParticipant("p1", "みさき");
+      e.start({ ...genreSet(), questions: genreSet().questions.map((q) => ({ id: q.id, type: q.type, prompt: q.prompt, answers: q.answers })) }, false);
+      e.next(T0);
+      e.startReading(T0 + 10);
+      expect(e.buzz("p1", T0 + 20)).toEqual({ kind: "accepted", position: 1 });
+      const r = e.judge("p1", true, T0 + 30);
+      expect(r).toMatchObject({ kind: "correct", multiplier: 1 });
+      expect(e.questionResult()!.results[0].multiplier).toBeUndefined();
+    });
   });
 });

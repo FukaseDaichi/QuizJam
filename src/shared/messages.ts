@@ -116,7 +116,7 @@ export interface MyAnswerStatus {
 export interface QuestionResultView {
   answers: string[];
   explanationImageUrl?: string;   // 問題に解説画像があれば。結果表示中にだけ届く
-  results: { participantId: string; nickname: string; correctRank: number; points: number }[];
+  results: { participantId: string; nickname: string; correctRank: number; points: number; multiplier?: number }[];   // multiplier は得意以外で 2 倍のときだけ
 }
 
 /** 早押しモードの出題中の状態。表示済み文字数は revealedCount()（shared/buzzer.ts）で求める */
@@ -129,6 +129,7 @@ export interface BuzzerView {
   charsPerSecond: number;                                // 今効いている速さ
   queue: { participantId: string; nickname: string }[];  // 先頭が回答中
   lockedOut: string[];
+  sittingOut: string[];                                  // ジャンル制で、出題中に得意ジャンルを選んだので今の問題は押せない人
 }
 
 /** GM が上書きした設定と、問題セット読み込み後に実際に効く設定 */
@@ -169,7 +170,11 @@ export type ErrorCode =
   | "not_reading"
   | "locked_out"
   | "already_buzzed"
-  | "genre_unavailable";
+  | "genre_unavailable"
+  | "specialties_required"
+  | "sitting_out"
+  | "specialties_already_set"
+  | "bad_specialties";
 
 const SERVER_TYPES = new Set<ServerMessage["type"]>([
   "state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated",

@@ -2,7 +2,7 @@ import type { Answer, BuzzerState, LeaderboardEntry, LiveSettings, Participant, 
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
 import { isFullyVoiced, playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
-import { genreCounts, genresOf, isGenreSet, type GenreCount } from "../shared/genre";
+import { genreCounts, genresOf, isGenreSet, OFF_SPECIALTY_MULTIPLIER, SPECIALTY_COUNT, type GenreCount } from "../shared/genre";
 import type { BuzzerView, ErrorCode, GenreSelectView, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
 
 export interface EngineState {
@@ -48,8 +48,12 @@ export type BuzzOutcome =
   | { kind: "accepted"; position: number }          // キュー内の順番（1 が回答中）
   | { kind: "rejected"; code: ErrorCode };
 
+export type SpecialtyOutcome =
+  | { kind: "accepted"; participant: Participant }
+  | { kind: "rejected"; code: ErrorCode };
+
 export type JudgeOutcome =
-  | { kind: "correct"; participantId: string; points: number; result: QuestionResultView }
+  | { kind: "correct"; participantId: string; points: number; multiplier: number; result: QuestionResultView }
   | { kind: "wrong"; participantId: string; points: number }
   | { kind: "rejected"; code: ErrorCode };   // 判定対象が回答中の人と違う（二度押しなど）
 
@@ -141,6 +145,24 @@ export class GameEngine {
     return Object.values(this.s.participants).map((p) => ({ ...p }));
   }
 
+  /**
+   * ジャンル制の得意ジャンル選び（1 人 1 回）。個数は min(SPECIALTY_COUNT, 残りのあるジャンルの数)。
+   * 出題中に選んだ人は、その問題は見送って次の問題から押せる
+   */
+  chooseSpecialties(participantId: string, genres: string[]): SpecialtyOutcome {
+    if (!this.isGenreMode || this.s.phase === "lobby" || this.s.phase === "finalResult") return { kind: "rejected", code: "invalid_state" };
+    const p = this.s.participants[participantId];
+    if (!p) return { kind: "rejected", code: "forbidden" };
+    if (p.specialties) return { kind: "rejected", code: "specialties_already_set" };
+    const left = this.genres()!.filter((g) => g.remaining > 0).map((g) => g.genre);
+    if (genres.length !== Math.min(SPECIALTY_COUNT, left.length) || new Set(genres).size !== genres.length || !genres.every((g) => left.includes(g))) {
+      return { kind: "rejected", code: "bad_specialties" };
+    }
+    p.specialties = [...genres];
+    if (this.s.phase === "question" && this.s.buzzer) this.s.buzzer.sittingOut.push(participantId);
+    return { kind: "accepted", participant: { ...p, specialties: [...genres] } };
+  }
+
   // ---- GM live controls ----
   adjustScore(id: string, delta: number): Participant | null {
     const p = this.s.participants[id];
@@ -161,6 +183,7 @@ export class GameEngine {
       const wasAnswering = b.status === "paused" && b.queue[0] === id;
       b.queue = b.queue.filter((x) => x !== id);
       b.lockedOut = b.lockedOut.filter((x) => x !== id);
+      b.sittingOut = b.sittingOut.filter((x) => x !== id);
       // 回答中の人が消えたら不正解と同じように次へ回す（減点はしない）
       if (wasAnswering) this.resumeIfQueueEmpty(now);
     }
@@ -205,6 +228,7 @@ export class GameEngine {
     this.s.asked = [];
     this.s.genrePick = null;
     this.s.randomGenre = false;
+    for (const p of Object.values(this.s.participants)) delete p.specialties;
     if (!carryOverScores) {
       for (const p of Object.values(this.s.participants)) p.score = 0;
     }
@@ -343,6 +367,7 @@ export class GameEngine {
         nickname: this.s.participants[a.participantId]?.nickname ?? "?",
         correctRank: a.correctRank!,
         points: a.points ?? settings.basePoints + (settings.rankBonus[a.correctRank! - 1] ?? 0),
+        ...(a.multiplier === OFF_SPECIALTY_MULTIPLIER ? { multiplier: a.multiplier } : {}),
       }));
     return { answers: [...q.answers], explanationImageUrl: q.explanationImageUrl, results };
   }
@@ -442,6 +467,11 @@ export class GameEngine {
     const active = Object.values(this.s.participants).filter((p) => p.connected);
     if (active.length === 0) return false;
     const b = this.s.buzzer;
+    if (b && this.isGenreMode) {
+      // 得意ジャンルを選んでいて、今の問題から参加している人だけが対象
+      const eligible = active.filter((p) => p.specialties && !b.sittingOut.includes(p.id));
+      return eligible.length > 0 && b.queue.length === 0 && eligible.every((p) => b.lockedOut.includes(p.id));
+    }
     if (b) return b.queue.length === 0 && active.every((p) => b.lockedOut.includes(p.id));
     const settings = this.settings();
     return active.every((p) => {
@@ -468,6 +498,7 @@ export class GameEngine {
       status: t.status, readingStartedAt: t.readingStartedAt, revealedChars: t.revealedChars, positionMs: t.positionMs, promptLength: t.promptLength, charsPerSecond: t.charsPerSecond,
       queue: b.queue.map((id) => ({ participantId: id, nickname: this.s.participants[id]?.nickname ?? "?" })),
       lockedOut: [...b.lockedOut],
+      sittingOut: [...b.sittingOut],
     };
   }
 
@@ -504,7 +535,12 @@ export class GameEngine {
   buzz(participantId: string, now: number): BuzzOutcome {
     const b = this.s.buzzer;
     if (!b || this.s.phase !== "question") return { kind: "rejected", code: "not_in_question" };
-    if (!this.s.participants[participantId]) return { kind: "rejected", code: "forbidden" };
+    const me = this.s.participants[participantId];
+    if (!me) return { kind: "rejected", code: "forbidden" };
+    if (this.isGenreMode) {
+      if (!me.specialties) return { kind: "rejected", code: "specialties_required" };
+      if (b.sittingOut.includes(participantId)) return { kind: "rejected", code: "sitting_out" };
+    }
     if (b.status === "ready") return { kind: "rejected", code: "not_reading" };
     if (b.lockedOut.includes(participantId)) return { kind: "rejected", code: "locked_out" };
     if (b.queue.includes(participantId)) return { kind: "rejected", code: "already_buzzed" };
@@ -529,11 +565,14 @@ export class GameEngine {
     const idx = this.s.currentIndex;
     const settings = this.settings(idx);
     if (correct) {
-      const points = settings.basePoints;
+      // ジャンル制は得意ジャンル以外の正解が 2 倍（不正解の減点は等倍）
+      const off = this.isGenreMode && !p?.specialties?.includes(this.s.questionSet!.questions[idx].genre!);
+      const multiplier = off ? OFF_SPECIALTY_MULTIPLIER : 1;
+      const points = settings.basePoints * multiplier;
       if (p) p.score += points;
-      this.s.answers.push({ questionIndex: idx, participantId, text: "", correct: true, submittedAt: now, correctRank: 1, points });
+      this.s.answers.push({ questionIndex: idx, participantId, text: "", correct: true, submittedAt: now, correctRank: 1, points, ...(off ? { multiplier } : {}) });
       const result = this.closeQuestion(now);
-      return { kind: "correct", participantId, points, result };
+      return { kind: "correct", participantId, points, multiplier, result };
     }
     const points = settings.wrongPenalty === 0 ? 0 : -settings.wrongPenalty;
     if (p) p.score += points;
