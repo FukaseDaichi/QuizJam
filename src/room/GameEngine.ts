@@ -67,7 +67,7 @@ export class GameEngine {
       ...structuredClone(state),
       settingsOverride: structuredClone(state.settingsOverride ?? {}),
       introIndex: state.introIndex ?? 0,
-      buzzer: state.buzzer ? { ...structuredClone(state.buzzer), positionMs: state.buzzer.positionMs ?? 0 } : null,
+      buzzer: state.buzzer ? { ...structuredClone(state.buzzer), positionMs: state.buzzer.positionMs ?? 0, sittingOut: state.buzzer.sittingOut ?? [] } : null,
     });
   }
 
@@ -199,7 +199,7 @@ export class GameEngine {
     if (this.isBuzzer) {
       // 早押しは締切を持たず、GM の「読み上げ開始」を待つ
       this.s.deadlineAt = null;
-      this.s.buzzer = { status: "ready", readingStartedAt: null, revealedChars: 0, positionMs: 0, queue: [], lockedOut: [] };
+      this.s.buzzer = { status: "ready", readingStartedAt: null, revealedChars: 0, positionMs: 0, queue: [], lockedOut: [], sittingOut: [] };
     } else {
       this.s.deadlineAt = settings.timerMode === "fixed" ? now + settings.timerSeconds * 1000 : null;
       this.s.buzzer = null;

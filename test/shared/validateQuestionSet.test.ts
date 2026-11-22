@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateQuestionSetInput } from "../../src/shared/validateQuestionSet";
+import genreSample from "../../question-sets/genre-sample.json";
 
 const base = { name: "セット", settings: {} };
 
@@ -170,5 +171,41 @@ describe("validateQuestionSetInput question audio", () => {
   it("drops the audio outside buzzer mode", () => {
     const v = validateQuestionSetInput({ ...base, questions: [{ prompt: "あいう", answers: ["え"], audio }] });
     expect("error" in v ? v.error : v.questions[0].audio).toBeUndefined();
+  });
+
+  describe("genre", () => {
+    const q = (genre?: unknown) => ({ prompt: "問", answers: ["答"], genre });
+    const buzzer = (genres: unknown[], mode: string | null = "buzzer") => validateQuestionSetInput({ ...base, mode, questions: genres.map(q) });
+
+    it("keeps trimmed genre on buzzer sets", () => {
+      const v = buzzer(["海 ", "山", "空"]);
+      expect("error" in v ? v.error : v.questions[0].genre).toBe("海");
+    });
+    it("treats genres differing only by surrounding spaces as one", () => {
+      expect(buzzer(["海 ", "海", "山"])).toEqual({ error: "at least 3 genres are required" });
+    });
+    it("rejects mixed genre presence", () => {
+      expect(buzzer(["海", undefined, "山"])).toEqual({ error: "genre must be set on all questions or none" });
+      expect(buzzer(["海", "   ", "山"])).toEqual({ error: "genre must be set on all questions or none" });
+    });
+    it("rejects fewer than 3 genres", () => {
+      expect(buzzer(["海", "山"])).toEqual({ error: "at least 3 genres are required" });
+    });
+    it("rejects an invalid genre", () => {
+      expect(buzzer(["あ".repeat(31), "山", "空"])).toEqual({ error: "questions[0].genre invalid" });
+      expect(buzzer([123, "山", "空"])).toEqual({ error: "questions[0].genre invalid" });
+    });
+    it("drops genre on anagram sets", () => {
+      const v = buzzer(["海", "山", "空"], null);
+      expect("error" in v ? v.error : v.questions[0].genre).toBeUndefined();
+    });
+    it("accepts a buzzer set without any genre", () => {
+      const v = buzzer([undefined, undefined]);
+      expect("error" in v).toBe(false);
+    });
+    it("accepts the bundled genre sample set", () => {
+      const v = validateQuestionSetInput(genreSample);
+      expect("error" in v ? v.error : v.questions.map((x) => x.genre)).toEqual(["動物", "動物", "植物", "植物", "天気", "天気"]);
+    });
   });
 });

@@ -27,6 +27,7 @@ export interface Question {
   explanationImageUrl?: string; // 問題結果画面に映す解説画像。出題中は参加者に送らない
   overrides?: Partial<QuestionSettings>;
   audio?: QuestionAudio;       // 早押しの問読み音声。早押しモードでだけ使う
+  genre?: string;              // ジャンル制の早押しでだけ使う。前後の空白を除いた 1〜30 文字
 }
 
 /** 問読み音声と、問題文の各文字を出す時刻（quiz-tts の align・publish が作る） */
@@ -54,13 +55,14 @@ export interface QuestionSet {
   questions: Question[];
 }
 
-export type Phase = "lobby" | "intro" | "question" | "questionResult" | "finalResult";
+export type Phase = "lobby" | "intro" | "question" | "questionResult" | "finalResult" | "genreSelect";
 
 export interface Participant {
   id: string;
   nickname: string;
   score: number;
   connected: boolean;
+  specialties?: string[];      // ジャンル制の得意ジャンル（2 つ）
 }
 
 export interface Answer {
@@ -72,6 +74,8 @@ export interface Answer {
   correctRank: number | null;
   /** この回答で実際に加減した点数。設定をゲーム中に変えても結果表示が変わらないよう保持する（旧データには無い） */
   points?: number;
+  /** 得意ジャンル以外の正解で掛けた倍率（ジャンル制のみ。旧データには無い） */
+  multiplier?: number;
 }
 
 export interface LeaderboardEntry {
@@ -99,4 +103,5 @@ export interface BuzzerState {
   positionMs: number;               // 区間の起点での音声の再生位置 (ms)。音声付きの問題でだけ使う
   queue: string[];                 // 早押しキュー（参加者 ID、サーバー受信順）。先頭が回答中
   lockedOut: string[];              // この問題で不正解になり、押せなくなった参加者 ID
+  sittingOut: string[];             // この問題を見送る参加者 ID
 }

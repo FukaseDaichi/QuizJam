@@ -1,6 +1,7 @@
 import type { IntroSlide, Question, QuestionAudio, QuestionSet, QuestionSetMode, QuestionSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./defaults";
 import { promptLength } from "./buzzer";
+import { MAX_GENRE_LENGTH, MIN_GENRES, genresOf } from "./genre";
 
 export type QuestionSetInput = Omit<QuestionSet, "id">;
 
@@ -138,6 +139,13 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       if ("error" in a) return { error: `questions[${i}].${a.error}` };
       audio = a;
     }
+    // ジャンルは早押しでだけ使う。空白だけは無指定
+    let genre: string | undefined;
+    if (mode === "buzzer") {
+      const g = optionalText(qq.genre, MAX_GENRE_LENGTH);
+      if (g === null) return { error: `questions[${i}].genre invalid` };
+      genre = g;
+    }
     questions.push({
       id: typeof qq.id === "string" && qq.id ? qq.id : crypto.randomUUID(),
       type: "anagram",
@@ -148,7 +156,13 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       explanationImageUrl,
       overrides,
       audio,
+      genre,
     });
+  }
+  if (mode === "buzzer") {
+    const withGenre = questions.filter((q) => q.genre !== undefined).length;
+    if (withGenre > 0 && withGenre < questions.length) return { error: "genre must be set on all questions or none" };
+    if (withGenre > 0 && genresOf(questions).length < MIN_GENRES) return { error: `at least ${MIN_GENRES} genres are required` };
   }
   return {
     name: o.name.trim(), mode, coverImageUrl, slideBackground,
