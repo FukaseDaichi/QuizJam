@@ -124,7 +124,6 @@ export function GmRoomPage() {
 
           {(state.phase === "question" || state.phase === "questionResult") && q && (
             <Card tone={light ? "light" : "dark"} className="flex flex-1 flex-col" style={q.background ? { backgroundColor: q.background, borderColor: q.background } : undefined}>
-              {q.genre && state.phase === "questionResult" && <GenreChip genre={q.genre} random={q.randomGenre} muted={mutedText} />}
               {buzzerMode && state.phase === "question" ? (
                 <BuzzerQuestion question={q} buzzer={buzzer} clockOffsetMs={state.clockOffsetMs} light={light} imageHeight={imageHeight} />
               ) : (
@@ -133,6 +132,7 @@ export function GmRoomPage() {
                     <span className="text-xl font-bold">第{q.number}問 / {q.total}問</span>
                     {state.phase === "question" && <CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} size="lg" />}
                   </div>
+                  {q.genre && <GenreChip genre={q.genre} random={q.randomGenre} muted={mutedText} />}
                   <div key={explanationImageUrl ? `${q.index}-explanation` : q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">
                     {explanationImageUrl ? (
                       <img src={explanationImageUrl} alt="解説" className={`min-h-0 ${imageHeight} w-auto max-w-full flex-1 rounded-2xl object-contain`} />
@@ -166,8 +166,9 @@ export function GmRoomPage() {
           )}
 
           {genreSelect && (
-            <Card tone="dark" title={`${genreSelect.picker.nickname}さんがジャンルを選んでいます`} icon={Shuffle} className="flex-1">
-              <GenreButtons genres={genreSelect.genres} tone="dark" onPick={(genre) => send({ type: "pickGenre", genre })} />
+            <Card tone="dark" className="flex flex-1 flex-col items-center justify-center gap-10">
+              <h2 className="qj-pop text-center text-5xl font-black leading-tight break-words"><span className="text-brand">{genreSelect.picker.nickname}</span>さんがジャンルを選んでいます</h2>
+              <div className="w-full max-w-4xl"><GenreButtons genres={genreSelect.genres} tone="dark" onPick={(genre) => send({ type: "pickGenre", genre })} /></div>
             </Card>
           )}
 

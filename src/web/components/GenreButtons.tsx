@@ -21,7 +21,7 @@ export function GenreButtons({ genres, tone, selected = [], marked = [], showRem
 }) {
   const dark = tone === "dark";
   return (
-    <div className={`grid gap-3 ${dark ? "grid-cols-[repeat(auto-fill,minmax(11rem,1fr))]" : "grid-cols-2"}`}>
+    <div className={`grid ${dark ? "grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4" : "grid-cols-2 gap-3"}`}>
       {genres.map((g) => {
         const on = selected.includes(g.genre);
         const empty = showRemaining && g.remaining === 0;
@@ -30,12 +30,12 @@ export function GenreButtons({ genres, tone, selected = [], marked = [], showRem
           : dark ? "border-slate-600 bg-slate-700 text-slate-100 hover:bg-slate-600" : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";
         return (
           <button
-            key={g.genre} type="button" disabled={disabled || empty} aria-pressed={selected.length > 0 ? on : undefined}
+            key={g.genre} type="button" disabled={disabled || empty} aria-label={showRemaining ? `${g.genre}（残り${g.remaining}問）` : g.genre} aria-pressed={selected.length > 0 ? on : undefined}
             onClick={() => onPick?.(g.genre)}
-            className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-3 font-bold transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 ${dark ? "min-h-20 py-3 text-xl" : "min-h-14 py-2 text-base"} ${style}`}
+            className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-3 font-bold transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 ${dark ? "min-h-28 py-4 text-3xl" : "min-h-14 py-2 text-base"} ${style}`}
           >
             <span className="max-w-full break-words">{g.genre}</span>
-            {showRemaining && <span className={`text-sm tabular-nums ${on ? "text-white/90" : dark ? "text-slate-300" : "text-slate-500"}`}>残り {g.remaining} 問</span>}
+            {showRemaining && <span className={`${dark ? "text-lg" : "text-sm"} tabular-nums ${on ? "text-white/90" : dark ? "text-slate-300" : "text-slate-500"}`}>残り {g.remaining} 問</span>}
             {marked.includes(g.genre) && (
               <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-0.5 rounded-lg bg-amber-400 px-1.5 py-0.5 text-xs font-black text-amber-950"><Star size={12} aria-hidden />得意</span>
             )}
