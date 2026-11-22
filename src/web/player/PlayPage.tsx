@@ -92,7 +92,7 @@ export function PlayPage() {
 
       {state.ready && phase === "question" && q && buzzerMode && (
         <>
-          <p className="text-sm font-bold text-slate-500">第{q.index + 1}問 / {q.total}問</p>
+          <p className="text-sm font-bold text-slate-500">第{q.number}問 / {q.total}問</p>
           <BuzzerPanel question={q} buzzer={state.buzzer} meId={me?.id} status={status} lastPoints={state.lastAnswerResult?.correct ? state.lastAnswerResult.points : null} multiplier={bonusX2 ? 2 : undefined} specialties={state.genres !== null ? me?.specialties : undefined} shake={shake} send={send} />
         </>
       )}
@@ -100,7 +100,7 @@ export function PlayPage() {
       {state.ready && phase === "question" && q && !buzzerMode && (
         <>
           <Card>
-            <p className="text-sm font-bold text-slate-500">第{q.index + 1}問 / {q.total}問</p>
+            <p className="text-sm font-bold text-slate-500">第{q.number}問 / {q.total}問</p>
             {q.imageUrl && (
               <img key={q.index} src={q.imageUrl} alt="" style={q.background ? { backgroundColor: q.background } : undefined}
                 className={`qj-pop mt-2 w-full rounded-xl bg-slate-100 object-contain ${q.prompt ? "max-h-56" : "max-h-[50vh]"}`} />

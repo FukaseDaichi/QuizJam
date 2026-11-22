@@ -9,10 +9,12 @@ import { GenreButtons } from "../components/GenreButtons";
 export function SpecialtyPicker({ genres, need, onDecide }: { genres: GenreCount[]; need: number; onDecide: (genres: string[]) => void }) {
   const [picked, setPicked] = useState<string[]>([]);
   // 選んだあとに問題が尽きたジャンルは数えない
-  const chosen = picked.filter((g) => genres.some((x) => x.genre === g && x.remaining > 0));
+  const valid = (list: string[]) => list.filter((g) => genres.some((x) => x.genre === g && x.remaining > 0));
+  const chosen = valid(picked);
   const toggle = (genre: string) => setPicked((cur) => {
-    if (cur.includes(genre)) return cur.filter((g) => g !== genre);
-    return cur.length >= need ? cur : [...cur, genre];   // need 個を超える選択は無視する
+    const v = valid(cur);
+    if (v.includes(genre)) return v.filter((g) => g !== genre);
+    return v.length >= need ? v : [...v, genre];   // need 個を超える選択は無視する
   });
   return (
     <Card icon={Star} title="得意ジャンル">

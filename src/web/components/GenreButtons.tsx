@@ -10,7 +10,7 @@ export function specialtiesText(specialties: string[] | undefined): string {
  * ジャンルのボタン群。remaining が 0 のもの（残り問題数を出さなくても）と disabled のときは押せない。
  * tone="dark" は GM 画面（大きめ）、"light" はスマホ（高さ 48px 以上）
  */
-export function GenreButtons({ genres, tone, selected = [], marked = [], showRemaining = true, disabled = false, onPick }: {
+export function GenreButtons({ genres, tone, selected: selectedProp, marked = [], showRemaining = true, disabled = false, onPick }: {
   genres: GenreCount[];
   tone: "light" | "dark";
   selected?: string[];
@@ -19,6 +19,8 @@ export function GenreButtons({ genres, tone, selected = [], marked = [], showRem
   disabled?: boolean;
   onPick?: (genre: string) => void;
 }) {
+  const selectable = selectedProp !== undefined;   // 選択式（得意ジャンル選び）のときだけ押下状態を持つ
+  const selected = selectedProp ?? [];
   const dark = tone === "dark";
   return (
     <div className={`grid ${dark ? "grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4" : "grid-cols-2 gap-3"}`}>
@@ -30,7 +32,7 @@ export function GenreButtons({ genres, tone, selected = [], marked = [], showRem
           : dark ? "border-slate-600 bg-slate-700 text-slate-100 hover:bg-slate-600" : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";
         return (
           <button
-            key={g.genre} type="button" disabled={disabled || empty} aria-label={showRemaining ? `${g.genre}（残り${g.remaining}問）` : g.genre} aria-pressed={selected.length > 0 ? on : undefined}
+            key={g.genre} type="button" disabled={disabled || empty} aria-label={showRemaining ? `${g.genre}（残り${g.remaining}問）` : g.genre} aria-pressed={selectable ? on : undefined}
             onClick={() => onPick?.(g.genre)}
             className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-3 font-bold transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 ${dark ? "min-h-28 py-4 text-3xl" : "min-h-14 py-2 text-base"} ${style}`}
           >

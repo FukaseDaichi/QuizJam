@@ -51,7 +51,7 @@ export function BuzzerPanel({ question, buzzer, meId, status, lastPoints, multip
   );
   else if (position > 1) caption = <p className="text-xl font-bold text-slate-700">{position}番目に押しました。{answering?.nickname}さんの回答を待っています</p>;
   else if (answering) caption = <p className="text-lg text-slate-600">{answering.nickname}さんが回答中。押すと次の順番に並びます</p>;
-  else caption = <p className="text-xl font-bold text-slate-700">第{question.index + 1}問</p>;
+  else caption = <p className="text-xl font-bold text-slate-700">第{question.number}問</p>;
 
   return (
     <div className={`flex flex-1 flex-col items-center justify-center gap-8 ${shake ? "qj-shake" : ""}`}>
