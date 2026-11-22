@@ -64,7 +64,7 @@
 
 | type | 宛先 | payload | 内容 |
 |---|---|---|---|
-| `state` | 接続者本人（`endGame` 時は全員） | 下記 | 現在の全状態。接続・再接続時に送る |
+| `state` | 接続者本人（`start`・`endGame` 時は全員） | 下記 | 現在の全状態。接続・再接続時に送る |
 | `participantJoined` | 全員 | `{ participant }` | 入室または再接続 |
 | `participantLeft` | 全員 | `{ participant }` | 切断（`connected: false`） |
 | `participantRemoved` | 全員 | `{ participant }` | キックで削除 |
