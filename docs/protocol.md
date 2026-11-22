@@ -46,7 +46,7 @@
 | `answer` | 参加者 | `{ text }` | 回答送信 |
 | `start` | GM | `{ questionSetId, carryOverScores }` | ゲーム開始。`lobby` か `finalResult` のときのみ |
 | `close` | GM | なし | 現在の問題を手動締切 |
-| `next` | GM | なし | 次へ。`intro` 中は次の説明スライドか第1問へ、`questionResult` 中は次の問題か最終結果へ |
+| `next` | GM | なし | 次へ。`intro` 中は次の説明スライドか第1問へ、`questionResult` 中は次の問題か最終結果へ（ジャンル制では正解者がジャンルを選ぶ `genreSelect` へ進むこともある） |
 | `endGame` | GM | なし | ルームをロビーに戻す |
 | `updateSettings` | GM | `{ settings: Partial<LiveSettings> }` | ライブ設定の上書き全体。送った内容で置き換え、`{}` で解除。`timerMode` は3モードのいずれか、`timerSeconds` は正の整数、`maxAttempts` は正の整数か `null`、`basePoints` / `wrongPenalty` は 0 以上の整数、`rankBonus` は 0 以上の整数の配列（20個まで）、`charsPerSecond` は 1〜30 の整数。出題中なら締切を合わせ直し、変われば `deadlineSet` を送る。早押しの読み上げ中なら区間の起点を取り直してから適用し（問読み音声のある問題では取り直さない）、`buzzerUpdated` を送る |
 | `adjustScore` | GM | `{ participantId, delta }` | 参加者の点数を加減 |
@@ -54,6 +54,9 @@
 | `startReading` | GM | なし | 早押しの読み上げ（文字送り）開始。`question` かつ早押しモードかつ `ready` のときだけ。問読み音声があれば再生位置 0（「問題！」の頭）から |
 | `buzz` | 参加者 | なし | 早押し。受理は `buzzerUpdated` の `queue` で分かる |
 | `judge` | GM | `{ participantId, correct: boolean }` | 回答中の参加者を判定。`participantId` が回答中の人（キューの先頭）と違えば `invalid_state`（ボタンの二度押しで次の人まで判定されないため） |
+| `chooseSpecialties` | 参加者 | `{ genres: string[] }` | ジャンル制の得意ジャンルの決定（1 人 1 回）。個数は 2（残りのあるジャンルが 2 つ未満ならその数）、重複・存在しない・問題が尽きたジャンルは `bad_specialties`、2 回目は `specialties_already_set`。ジャンル制でない・ロビー・最終結果では `invalid_state`。GM は `forbidden` |
+| `pickGenre` | 選ぶ人・GM | `{ genre: string \| null }` | `genreSelect` 中のジャンル指定。指定したジャンルの未出題から無作為に 1 問を開く。選ぶ人は文字列だけ送れる（本人以外・`null` は `forbidden`）。GM は任意のジャンルか、`null`（ランダムで決める）。残り 0 のジャンル・存在しないジャンルは `genre_unavailable`。`genreSelect` 以外では `invalid_state` |
+| `finish` | GM | なし | 途中終了。`question`・`questionResult`・`genreSelect` のとき最終結果へ進む（`finalResult` を送る）。それ以外は `invalid_state` |
 
 参加者からの GM 操作、GM からの `answer` は `forbidden` エラーになる。
 
@@ -68,14 +71,17 @@
 | `kicked` | キックされた本人 | なし | 直後にサーバーがソケットを閉じる（code 4000） |
 | `settingsUpdated` | 全員 | `{ settings: SettingsView }` | ライブ設定の変更。出題のたび（`start` / `next`）にも送り、実際に効く設定を知らせる |
 | `introStarted` | 全員 | `{ intro: IntroView }` | タイトル・説明スライドの表示。`start` と `intro` 中の `next` で送る |
-| `questionStarted` | 全員 | `{ question: QuestionView }` | 出題。早押しモードでは参加者向けの `prompt` は空、`hint` は無し（問題文は GM にだけ届く） |
+| `questionStarted` | 全員 | `{ question: QuestionView }` | 出題（ジャンル制ではジャンルの指定・キックによるランダム開始でも送る）。早押しモードでは参加者向けの `prompt` は空、`hint` は無し（問題文は GM にだけ届く） |
 | `buzzerUpdated` | 全員 | `{ buzzer: BuzzerView }` | 早押し状態の変化。出題直後・`startReading`・`buzz`・`judge`（不正解）・キューに居た人のキック・`updateSettings` で送る |
 | `deadlineSet` | 全員 | `{ deadlineAt }` | 締切時刻が決まった・消えたとき（正解者トリガー、ライブ設定のタイマー変更）。`null` は締切なし |
-| `answerResult` | 回答者本人 | `{ correct, correctRank, remainingAttempts, points }` | 回答判定結果。正解時の `remainingAttempts` は `null` |
-| `someoneCorrect` | 全員 | `{ participantId, nickname, correctRank, points }` | GM 画面のポップアップ用 |
+| `answerResult` | 回答者本人 | `{ correct, correctRank, remainingAttempts, points, multiplier? }` | 回答判定結果。正解時の `remainingAttempts` は `null`。`multiplier` は得意ジャンル以外で 2 倍のときだけ載る（`2`） |
+| `someoneCorrect` | 全員 | `{ participantId, nickname, correctRank, points, multiplier? }` | GM 画面のポップアップ用。`multiplier` は `answerResult` と同じ |
 | `leaderboard` | 全員 | `{ entries: LeaderboardEntry[] }` | 入室・回答・スコア調整・キック・締切のたびに送る |
 | `questionClosed` | 全員 | `{ result: QuestionResultView }` | 問題終了。正解候補・解説画像（あれば）・正解者一覧（正解順） |
-| `finalResult` | 全員 | `{ entries }` | 最終順位表 |
+| `finalResult` | 全員 | `{ entries }` | 最終順位表。`finish` でも送る |
+| `genreUpdated` | 全員 | `{ genres: GenreCount[] \| null }` | ジャンルごとの残り問題数。`start`（ジャンル制でなければ `null`）と、問題が開くたびに送る。古いクライアントはこの未知の type を受けて再読み込みされる |
+| `genreSelectStarted` | 全員 | `{ select: GenreSelectView }` | ジャンル選択の場面。`questionResult` 中の `next` で正解者が選ぶ人になるときに送る |
+| `specialtiesChosen` | 全員 | `{ participant }` | 得意ジャンルの決定。`specialties` を含む参加者を送る。出題中なら続けて `buzzerUpdated`（見送りの変化）を送る |
 | `error` | 本人 | `{ code, message }` | 拒否理由。`message` は日本語の表示用文言 |
 
 ```ts
@@ -95,10 +101,15 @@ interface StateMessage {
   correctCount: number;            // 現在の問題の正解者数
   settings: SettingsView;          // GM の上書きと、実際に効く設定。mode に出題形式（未読込なら null）
   buzzer: BuzzerView | null;       // 早押しモードで出題中のみ
+  genres: GenreCount[] | null;     // ジャンル制のときだけ。ジャンルごとの残り問題数（{ genre, remaining }）
+  genreSelect: GenreSelectView | null;   // genreSelect フェーズのみ
 }
 
 interface QuestionView {
   index: number; total: number;
+  number: number;                  // 第 n 問（1 始まり）。ジャンル制では出題した数、それ以外は index + 1
+  genre?: string;                  // ジャンル制のときだけ
+  randomGenre?: boolean;           // ジャンル制で、サーバーがランダムで決めた問題
   mode: "anagram" | "buzzer";      // 画面の出し分け
   prompt: string; hint?: string; imageUrl?: string;
   background?: string;             // 問題セットの slideBackground
@@ -110,14 +121,20 @@ interface QuestionView {
 interface QuestionResultView {
   answers: string[];
   explanationImageUrl?: string;    // 問題の解説画像。出題中の QuestionView には含めない
-  results: { participantId: string; nickname: string; correctRank: number; points: number }[];
+  results: { participantId: string; nickname: string; correctRank: number; points: number; multiplier?: number }[];   // multiplier は得意以外で 2 倍のときだけ
+}
+
+/** ジャンル選択の場面。選ぶ人と、ジャンルごとの残り問題数（問題セットの並びで最初に現れた順） */
+interface GenreSelectView {
+  picker: { participantId: string; nickname: string };
+  genres: { genre: string; remaining: number }[];
 }
 
 interface IntroView {
   index: number;                   // 0 がタイトル
   total: number;                   // 1 + introSlides.length
   slide:
-    | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: "anagram" | "buzzer"; audio: boolean }   // audio: 早押しで全問に問読み音声がある
+    | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: "anagram" | "buzzer"; audio: boolean; genreCount?: number }   // audio: 早押しで全問に問読み音声がある / genreCount: ジャンル制のときだけ
     | { kind: "slide"; heading?: string; body?: string; imageUrl?: string };
 }
 
@@ -131,6 +148,7 @@ interface BuzzerView {
   charsPerSecond: number;                                // 今効いている速さ
   queue: { participantId: string; nickname: string }[];  // 先頭が回答中
   lockedOut: string[];
+  sittingOut: string[];                                  // ジャンル制で、この問題を見送る人（出題中に得意ジャンルを決めた人）
 }
 ```
 
@@ -154,12 +172,17 @@ interface BuzzerView {
 | `not_reading` | 読み上げ開始前の早押し |
 | `locked_out` | 不正解後の早押し |
 | `already_buzzed` | キューに居る人の再押し |
+| `specialties_required` | ジャンル制で得意ジャンルが未選択の早押し |
+| `sitting_out` | ジャンル制で、出題中に得意ジャンルを決めた人の、その問題での早押し |
+| `specialties_already_set` | 得意ジャンルの選び直し |
+| `bad_specialties` | 得意ジャンルの個数・重複・存在しない／問題が尽きたジャンル |
+| `genre_unavailable` | 残り 0 または存在しないジャンルの指定 |
 
 ## タイマー
 
 - サーバーが締切時刻 `deadlineAt`（UNIX ms）を配信し、クライアントは `state` の `serverTime` との差で自分の時計を補正して残り秒数（切り上げ）を描画する。
 - 締切の確定はサーバー側で行う。Durable Object の Alarm で `deadlineAt` に起床し `questionClosed` を送る。クライアントの 0 秒表示は表示用にすぎない。
-- Alarm は1つしか持てないため、`alarmKind` で用途を区別する。締切待ちのときは `deadline`、それ以外（ロビー・タイトル・説明スライド表示中・結果表示・締切なしの出題中・早押しモードの出題中・最終結果）は24時間後の `cleanup` を設定する。
+- Alarm は1つしか持てないため、`alarmKind` で用途を区別する。締切待ちのときは `deadline`、それ以外（ロビー・タイトル・説明スライド表示中・結果表示・ジャンル選択・締切なしの出題中・早押しモードの出題中・最終結果）は24時間後の `cleanup` を設定する。
 - `cleanup` の Alarm が発火すると全接続を閉じ、ストレージをすべて削除する。
 
 ## 再接続

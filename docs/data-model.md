@@ -53,6 +53,7 @@ interface Question {
   explanationImageUrl?: string; // 解説画像。問題結果画面でだけ表示する
   overrides?: Partial<QuestionSettings>;
   audio?: QuestionAudio;       // 早押しの問読み音声。早押しモードでだけ使う
+  genre?: string;              // ジャンル制の早押しでだけ使う。前後の空白を除いた 1〜30 文字
 }
 
 /** 問読み音声と、問題文の各文字を出す時刻（quiz-tts の align・publish が作る） */
@@ -81,6 +82,7 @@ API 受信時とインポート時に同じ検証を適用する。
 - `questions[].answers` は空でない文字列の配列（1件以上）
 - `questions[].prompt` は `imageUrl` があれば空にできる。画像も出題文もない問題は拒否する（`explanationImageUrl` は出題文の代わりにならない）。`mode: "buzzer"` では読み上げる文章が要るので、画像があっても `prompt` は必須
 - `questions[].audio` は `mode: "buzzer"` でだけ保存し、ほかのモードでは落とす。`url` は `/api/audio/<key>` か `https://` で始まる 500 文字以内。`revealAtMs` は前後の空白を除いた `prompt` の文字数（コードポイント）と同じ長さで、0〜600000 の整数が前の要素以上で並ぶ
+- `questions[].genre` は `mode: "buzzer"` でだけ保存し、ほかのモードでは落とす。前後の空白を除いて 1〜30 文字で、空白だけなら無指定として扱う。早押しで `genre` のある問題と無い問題が混ざっていたら拒否する。全問に付けた（ジャンル制の）セットはジャンルが 3 種類以上必要
 - `questions[].id` が無ければサーバーが UUID を採番する
 
 ### D1 スキーマ
@@ -113,7 +115,7 @@ CREATE TABLE question_sets (
 ```ts
 interface EngineState {
   roomCode: string;            // 6文字。紛らわしい文字（0/O/1/I）を除いた英大文字と数字
-  phase: "lobby" | "intro" | "question" | "questionResult" | "finalResult";
+  phase: "lobby" | "intro" | "question" | "questionResult" | "finalResult" | "genreSelect";
   questionSet: QuestionSet | null;   // 開始時に D1 から読み込んだコピー
   currentIndex: number;
   introIndex: number;          // intro 中のスライド。0 がタイトル、1..n が introSlides[n-1]
@@ -124,6 +126,9 @@ interface EngineState {
   answers: Answer[];
   settingsOverride: Partial<LiveSettings>;   // GM のライブ設定。ゲームをまたいで保持
   buzzer: BuzzerState | null;  // 早押しモードで出題中のみ。それ以外は null
+  asked: number[];             // 出題した問題の位置（出題順）。ジャンル制で未出題を数えるのに使う
+  genrePick: { pickerId: string } | null;   // genreSelect 中だけ。選ぶ人の参加者 ID
+  randomGenre: boolean;        // 今の問題をサーバーがランダムで決めたか
 }
 
 /** 早押しモードの出題中の状態 */
@@ -134,6 +139,7 @@ interface BuzzerState {
   positionMs: number;               // 区間の起点での問読み音声の再生位置 (ms)。音声付きの問題でだけ使う
   queue: string[];                  // 早押しキュー（参加者 ID、サーバー受信順）。先頭が回答中
   lockedOut: string[];              // この問題で不正解になり、押せなくなった参加者 ID
+  sittingOut: string[];             // ジャンル制で、この問題を見送る参加者 ID（出題中に得意ジャンルを決めた人）
 }
 
 interface Participant {
@@ -141,6 +147,7 @@ interface Participant {
   nickname: string;
   score: number;
   connected: boolean;
+  specialties?: string[];      // ジャンル制の得意ジャンル（2 つ。残りが少ないときはその数）。未選択は無し
 }
 
 interface Answer {
@@ -151,6 +158,7 @@ interface Answer {
   submittedAt: number;         // サーバー受信時刻 (UNIX ms)
   correctRank: number | null;  // 正解者の何番目か
   points?: number;             // 回答時に実際に加減した点数。設定をゲーム中に変えても結果表示を変えない
+  multiplier?: number;         // 得意ジャンル以外の正解で掛けた倍率（ジャンル制のみ。2）
 }
 ```
 
@@ -161,4 +169,4 @@ Durable Object の SQLite には次を保存する。
 | `kv` | `snapshot`（`EngineState` の JSON）、`gmToken`、`alarmKind`（`deadline` か `cleanup`） |
 | `tokens` | 参加者トークン → 参加者 ID |
 
-状態を変更するたびにスナップショットを書き戻し、オブジェクト起動時に復元する。旧スナップショットに `buzzer` が無ければ `null`、`buzzer.positionMs` が無ければ 0 として復元する。早押しの正解・不正解も `answers` に `text: ""` で記録する（正解は `correctRank: 1`、`points: basePoints`。不正解は `points: −wrongPenalty`）。
+状態を変更するたびにスナップショットを書き戻し、オブジェクト起動時に復元する。旧スナップショットに `buzzer` が無ければ `null`、`buzzer.positionMs` が無ければ 0、`buzzer.sittingOut` が無ければ `[]`、`asked` が無ければ `[]`、`genrePick` が無ければ `null`、`randomGenre` が無ければ `false` として復元する。ゲーム開始で `asked`・`genrePick`・`randomGenre` と全員の `specialties` を消す。早押しの正解・不正解も `answers` に `text: ""` で記録する（正解は `correctRank: 1`、`points: basePoints`。不正解は `points: −wrongPenalty`）。
