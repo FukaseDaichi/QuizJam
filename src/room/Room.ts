@@ -173,6 +173,24 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
+    if (msg.type === "chooseSpecialties") {
+      if (attachment.role !== "player") return this.sendError(ws, "forbidden", "GMは得意ジャンルを選べません");
+      const outcome = engine.chooseSpecialties(attachment.participantId, msg.genres);
+      if (outcome.kind === "rejected") return this.sendError(ws, outcome.code, this.errorText(outcome.code));
+      this.save();
+      this.broadcast({ type: "specialtiesChosen", participant: outcome.participant });
+      this.broadcastBuzzer();   // 出題中なら sittingOut が変わる
+      return;
+    }
+
+    if (msg.type === "pickGenre") {
+      const outcome = engine.pickGenre(attachment.role === "gm" ? "gm" : { participantId: attachment.participantId }, msg.genre, now);
+      if (outcome.kind === "rejected") return this.sendError(ws, outcome.code, this.errorText(outcome.code));
+      this.save();
+      await this.announceQuestion();
+      return;
+    }
+
     if (attachment.role !== "gm") return this.sendError(ws, "forbidden", "GMのみ操作できます");
 
     switch (msg.type) {
@@ -186,6 +204,8 @@ export class Room extends DurableObject<Env> {
         this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
         // 開始で初めて「実際に効く設定」が決まるので配る（GM 管理パネルの表示用）
         this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
+        // ジャンル制でなければ null。古いクライアントはこの未知の type で再読み込みされる
+        this.broadcast({ type: "genreUpdated", genres: engine.genres() });
         // intro には締切が無い。第1問に入るときに armDeadline する
         await this.scheduleCleanup();
         return;
@@ -202,17 +222,22 @@ export class Room extends DurableObject<Env> {
         if (r.kind === "intro") {
           this.broadcast({ type: "introStarted", intro: r.intro });
         } else if (r.kind === "question") {
-          this.broadcastQuestionStarted();
-          // 問題ごとの上書きで効く設定が変わりうる
-          this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
-          this.broadcastBuzzer();
-          await this.armDeadline(r.question.deadlineAt);
+          await this.announceQuestion();
         } else if (r.kind === "genreSelect") {
-          // Task 5 で配線する
+          this.broadcast({ type: "genreSelectStarted", select: r.select });
+          await this.scheduleCleanup();
         } else {
           this.broadcast({ type: "finalResult", entries: r.entries });
           await this.scheduleCleanup();
         }
+        return;
+      }
+      case "finish": {
+        if (engine.phase !== "question" && engine.phase !== "questionResult" && engine.phase !== "genreSelect") return this.sendError(ws, "invalid_state", "途中終了できる状態ではありません");
+        const entries = engine.finish();
+        this.save();
+        this.broadcast({ type: "finalResult", entries });
+        await this.scheduleCleanup();
         return;
       }
       case "endGame": {
@@ -244,6 +269,7 @@ export class Room extends DurableObject<Env> {
         return;
       }
       case "kick": {
+        const phaseBefore = engine.phase;
         const removed = engine.removeParticipant(msg.participantId, now);
         if (!removed) return this.sendError(ws, "participant_not_found", this.errorText("participant_not_found"));
         this.ctx.storage.sql.exec("DELETE FROM tokens WHERE participant_id = ?", removed.id);
@@ -254,7 +280,9 @@ export class Room extends DurableObject<Env> {
         }
         this.broadcast({ type: "participantRemoved", participant: removed });
         this.broadcast({ type: "leaderboard", entries: engine.leaderboard() });
-        this.broadcastBuzzer();
+        // 選ぶ人が消えるとエンジンがランダムで問題を開く
+        if (phaseBefore === "genreSelect" && engine.phase === "question") await this.announceQuestion();
+        else this.broadcastBuzzer();
         if (engine.allParticipantsDone()) await this.closeQuestion(now);
         return;
       }
@@ -274,8 +302,9 @@ export class Room extends DurableObject<Env> {
         this.save();
         const answerer = engine.getParticipant(outcome.participantId);
         if (outcome.kind === "correct") {
-          this.sendToParticipant(outcome.participantId, { type: "answerResult", correct: true, correctRank: 1, remainingAttempts: null, points: outcome.points });
-          if (answerer) this.broadcast({ type: "someoneCorrect", participantId: answerer.id, nickname: answerer.nickname, correctRank: 1, points: outcome.points });
+          const mult = outcome.multiplier === 2 ? { multiplier: 2 } : {};   // 2 倍のときだけ載せる
+          this.sendToParticipant(outcome.participantId, { type: "answerResult", correct: true, correctRank: 1, remainingAttempts: null, points: outcome.points, ...mult });
+          if (answerer) this.broadcast({ type: "someoneCorrect", participantId: answerer.id, nickname: answerer.nickname, correctRank: 1, points: outcome.points, ...mult });
           await this.afterClose(outcome.result);
           return;
         }
@@ -286,6 +315,17 @@ export class Room extends DurableObject<Env> {
         return;
       }
     }
+  }
+
+  /** 問題が開いた後の配信（next とジャンル選択、選ぶ人の退出で共通） */
+  private async announceQuestion(): Promise<void> {
+    const engine = this.engine!;
+    this.broadcastQuestionStarted();
+    this.broadcast({ type: "genreUpdated", genres: engine.genres() });
+    // 問題ごとの上書きで効く設定が変わりうる
+    this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
+    this.broadcastBuzzer();
+    await this.armDeadline(engine.currentQuestionView()!.deadlineAt);
   }
 
   private async closeQuestion(now: number): Promise<void> {
@@ -352,6 +392,8 @@ export class Room extends DurableObject<Env> {
       correctCount: engine.correctCount(),
       settings: this.settingsView(),
       buzzer: engine.buzzerView(),
+      genres: engine.genres(),
+      genreSelect: engine.genreSelectView(),
     };
   }
 

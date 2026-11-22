@@ -3,7 +3,7 @@ import { isKnownServerMessage, parseClientMessage } from "../../src/shared/messa
 
 describe("isKnownServerMessage", () => {
   it("accepts every type the client handles", () => {
-    for (const type of ["state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated", "introStarted", "questionStarted", "deadlineSet", "answerResult", "someoneCorrect", "leaderboard", "questionClosed", "finalResult", "buzzerUpdated", "error"]) {
+    for (const type of ["state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated", "introStarted", "questionStarted", "deadlineSet", "answerResult", "someoneCorrect", "leaderboard", "questionClosed", "finalResult", "buzzerUpdated", "genreUpdated", "genreSelectStarted", "specialtiesChosen", "error"]) {
       expect(isKnownServerMessage({ type })).toBe(true);
     }
   });
@@ -33,5 +33,24 @@ describe("parseClientMessage buzzer messages", () => {
     expect(parseClientMessage(JSON.stringify({ type: "updateSettings", settings: { charsPerSecond: 0 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "updateSettings", settings: { charsPerSecond: 31 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "updateSettings", settings: { charsPerSecond: 1.5 } }))).toBeNull();
+  });
+});
+
+describe("parseClientMessage genre messages", () => {
+  const parse = (o: unknown) => parseClientMessage(JSON.stringify(o));
+  it("parses chooseSpecialties, pickGenre and finish", () => {
+    expect(parse({ type: "chooseSpecialties", genres: ["A", "B"] })).toEqual({ type: "chooseSpecialties", genres: ["A", "B"] });
+    expect(parse({ type: "chooseSpecialties", genres: [] })).toEqual({ type: "chooseSpecialties", genres: [] });
+    expect(parse({ type: "pickGenre", genre: "A" })).toEqual({ type: "pickGenre", genre: "A" });
+    expect(parse({ type: "pickGenre", genre: null })).toEqual({ type: "pickGenre", genre: null });
+    expect(parse({ type: "finish" })).toEqual({ type: "finish" });
+  });
+  it("rejects malformed genre payloads", () => {
+    expect(parse({ type: "chooseSpecialties", genres: "A" })).toBeNull();
+    expect(parse({ type: "chooseSpecialties", genres: [1] })).toBeNull();
+    expect(parse({ type: "chooseSpecialties", genres: ["A", "B", "C"] })).toBeNull();
+    expect(parse({ type: "chooseSpecialties" })).toBeNull();
+    expect(parse({ type: "pickGenre", genre: 1 })).toBeNull();
+    expect(parse({ type: "pickGenre" })).toBeNull();
   });
 });

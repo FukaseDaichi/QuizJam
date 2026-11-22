@@ -1,5 +1,5 @@
 import type { BuzzerStatus, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionAudio, QuestionSetMode, QuestionSettings, TimerMode } from "./types";
-import type { GenreCount } from "./genre";
+import { SPECIALTY_COUNT, type GenreCount } from "./genre";
 import { isValidCharsPerSecond } from "./validateQuestionSet";
 
 // ---- client -> server ----
@@ -16,9 +16,13 @@ export type ClientMessage =
   // 早押しモード
   | { type: "startReading" }                  // GM: 読み上げ（文字送り）開始
   | { type: "buzz" }                          // 参加者: 早押し
-  | { type: "judge"; participantId: string; correct: boolean };   // GM: 回答中の参加者を判定。participantId が回答中の人と違えば拒否
+  | { type: "judge"; participantId: string; correct: boolean }    // GM: 回答中の参加者を判定。participantId が回答中の人と違えば拒否
+  // ジャンル制
+  | { type: "chooseSpecialties"; genres: string[] }               // 参加者: 得意ジャンルを選ぶ（1 人 1 回）
+  | { type: "pickGenre"; genre: string | null }                   // 選ぶ人（文字列のみ）か GM（null = ランダム）
+  | { type: "finish" };                                           // GM: 途中終了して最終結果へ
 
-const CLIENT_TYPES = new Set(["answer", "start", "close", "next", "endGame", "updateSettings", "adjustScore", "kick", "startReading", "buzz", "judge"]);
+const CLIENT_TYPES = new Set(["answer", "start", "close", "next", "endGame", "updateSettings", "adjustScore", "kick", "startReading", "buzz", "judge", "chooseSpecialties", "pickGenre", "finish"]);
 
 const isPositiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
 const isNonNegativeInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
@@ -72,6 +76,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   if (t === "judge") {
     const o = obj as { participantId?: unknown; correct?: unknown };
     if (typeof o.participantId !== "string" || typeof o.correct !== "boolean") return null;
+  }
+  if (t === "chooseSpecialties") {
+    const g = (obj as { genres?: unknown }).genres;
+    if (!Array.isArray(g) || g.length > SPECIALTY_COUNT || !g.every((x) => typeof x === "string")) return null;
+  }
+  if (t === "pickGenre") {
+    const g = (obj as { genre?: unknown }).genre;
+    if (g !== null && typeof g !== "string") return null;
   }
   return obj as ClientMessage;
 }
@@ -155,6 +167,8 @@ export interface StateMessage {
   correctCount: number; // 現在の問題の正解者数（出題中・結果表示中以外は 0）
   settings: SettingsView;
   buzzer: BuzzerView | null;       // 早押しモードで出題中のみ
+  genres: GenreCount[] | null;     // ジャンル制のときだけ。ジャンルごとの残り問題数
+  genreSelect: GenreSelectView | null;   // genreSelect フェーズのみ
 }
 
 export type ErrorCode =
@@ -179,7 +193,7 @@ export type ErrorCode =
 const SERVER_TYPES = new Set<ServerMessage["type"]>([
   "state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated",
   "introStarted", "questionStarted", "deadlineSet", "answerResult", "someoneCorrect", "leaderboard",
-  "questionClosed", "finalResult", "buzzerUpdated", "error",
+  "questionClosed", "finalResult", "buzzerUpdated", "genreUpdated", "genreSelectStarted", "specialtiesChosen", "error",
 ]);
 
 /**
@@ -201,10 +215,13 @@ export type ServerMessage =
   | { type: "introStarted"; intro: IntroView }
   | { type: "questionStarted"; question: QuestionView }
   | { type: "deadlineSet"; deadlineAt: number | null }
-  | { type: "answerResult"; correct: boolean; correctRank: number | null; remainingAttempts: number | null; points: number }
-  | { type: "someoneCorrect"; participantId: string; nickname: string; correctRank: number; points: number }
+  | { type: "answerResult"; correct: boolean; correctRank: number | null; remainingAttempts: number | null; points: number; multiplier?: number }
+  | { type: "someoneCorrect"; participantId: string; nickname: string; correctRank: number; points: number; multiplier?: number }
   | { type: "leaderboard"; entries: LeaderboardEntry[] }
   | { type: "questionClosed"; result: QuestionResultView }
   | { type: "finalResult"; entries: LeaderboardEntry[] }
   | { type: "buzzerUpdated"; buzzer: BuzzerView }
+  | { type: "genreUpdated"; genres: GenreCount[] | null }    // ゲーム開始時（ジャンル制でなければ null）と、問題が開くたび
+  | { type: "genreSelectStarted"; select: GenreSelectView }
+  | { type: "specialtiesChosen"; participant: Participant }
   | { type: "error"; code: ErrorCode; message: string };

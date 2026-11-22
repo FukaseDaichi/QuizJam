@@ -726,3 +726,210 @@ describe("Room DO buzzer mode", () => {
     expect((await gm.waitFor("settingsUpdated", (m) => m.settings.override.charsPerSecond === 20)).settings.effective?.charsPerSecond).toBe(20);
   });
 });
+
+describe("Room DO genre mode", () => {
+  async function seedGenreSet() {
+    const qs = ["歴史", "科学", "芸能"].flatMap((genre) => [1, 2].map((n) => ({ id: `${genre}${n}`, type: "anagram" as const, prompt: `${genre}の問題${n}`, answers: ["答え"], genre })));
+    return createQuestionSet(testEnv.DB, {
+      name: "ジャンル制", mode: "buzzer",
+      settings: { ...DEFAULT_SETTINGS, timerMode: "none", charsPerSecond: 5, wrongPenalty: 20 },
+      questions: qs,
+    });
+  }
+  /** GM と参加者 2 人が入って開始する。specialties が true なら、第 1 問の前に p1=[g0,g1] / p2=[g1,g2] を選ばせる */
+  async function setup(code: string, opts: { specialties?: boolean } = {}) {
+    const set = await seedGenreSet();
+    await initRoom(code);
+    const gm = await connect(code, "gm-token");
+    await gm.waitFor("state");
+    const p1 = await join(code, "みさき");
+    const p2 = await join(code, "たろう");
+    const c1 = await connect(code, p1.participantToken);
+    const c2 = await connect(code, p2.participantToken);
+    await c1.waitFor("state"); await c2.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    await gm.waitFor("introStarted");
+    const started = await gm.waitFor("genreUpdated");
+    const genres = started.genres!.map((g) => g.genre);
+    if (opts.specialties) {
+      c1.send({ type: "chooseSpecialties", genres: [genres[0], genres[1]] });
+      c2.send({ type: "chooseSpecialties", genres: [genres[1], genres[2]] });
+      await gm.waitFor("specialtiesChosen", (m) => m.participant.id === p1.participantId);
+      await gm.waitFor("specialtiesChosen", (m) => m.participant.id === p2.participantId);
+    }
+    gm.send({ type: "next" });
+    const qsGm = await gm.waitFor("questionStarted");
+    await c1.waitFor("questionStarted"); await c2.waitFor("questionStarted");
+    return { gm, p1, p2, c1, c2, genres, started, question: qsGm.question };
+  }
+  type Ctx = Awaited<ReturnType<typeof setup>>;
+  /** 第 1 問を p1 の正解で閉じ、next でジャンル選択（選ぶ人は p1）に入る */
+  async function toGenreSelect(code: string) {
+    const ctx = await setup(code, { specialties: true });
+    await answerCorrect(ctx, ctx.p1.participantId, ctx.c1);
+    ctx.gm.send({ type: "next" });
+    const sel = await ctx.gm.waitFor("genreSelectStarted");
+    return { ...ctx, sel };
+  }
+  async function answerCorrect(ctx: Ctx, pid: string, c: Client) {
+    ctx.gm.send({ type: "startReading" });
+    await c.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c.send({ type: "buzz" });
+    await ctx.gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "paused");
+    ctx.gm.send({ type: "judge", participantId: pid, correct: true });
+    await ctx.gm.waitFor("questionClosed");
+  }
+
+  it("start broadcasts genreUpdated; question 1 carries genre, randomGenre and number 1", async () => {
+    const { started, genres, question, c1 } = await setup("GEN01");
+    expect(started.genres).toEqual(genres.map((genre) => ({ genre, remaining: 2 })));
+    expect(genres).toHaveLength(3);
+    expect(question).toMatchObject({ number: 1, randomGenre: true });
+    expect(genres).toContain(question.genre);
+    const after = await c1.waitFor("genreUpdated", (m) => m.genres!.some((g) => g.remaining === 1));
+    expect(after.genres!.find((g) => g.genre === question.genre)?.remaining).toBe(1);
+  });
+
+  it("players choose specialties, everyone gets specialtiesChosen, and state includes them", async () => {
+    const { gm, c1, c2, p1, genres, started } = await (async () => {
+      const set = await seedGenreSet();
+      await initRoom("GEN02");
+      const gm = await connect("GEN02", "gm-token"); await gm.waitFor("state");
+      const p1 = await join("GEN02", "みさき"); const p2 = await join("GEN02", "たろう");
+      const c1 = await connect("GEN02", p1.participantToken); const c2 = await connect("GEN02", p2.participantToken);
+      await c1.waitFor("state"); await c2.waitFor("state");
+      gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+      const started = await gm.waitFor("genreUpdated");
+      return { gm, c1, c2, p1, genres: started.genres!.map((g) => g.genre), started };
+    })();
+    expect(started.genres).toHaveLength(3);
+    c1.send({ type: "chooseSpecialties", genres: [genres[0]] });
+    expect((await c1.waitFor("error")).code).toBe("bad_specialties");
+    gm.send({ type: "chooseSpecialties", genres: [genres[0], genres[1]] });
+    expect((await gm.waitFor("error")).code).toBe("forbidden");
+    c1.send({ type: "chooseSpecialties", genres: [genres[0], genres[1]] });
+    for (const c of [gm, c1, c2]) {
+      const m = await c.waitFor("specialtiesChosen");
+      expect(m.participant).toMatchObject({ id: p1.participantId, specialties: [genres[0], genres[1]] });
+    }
+    c1.send({ type: "chooseSpecialties", genres: [genres[1], genres[2]] });
+    expect((await c1.waitFor("error")).code).toBe("specialties_already_set");
+    const st = await (await connect("GEN02", "gm-token")).waitFor("state");
+    expect(st.participants.find((p) => p.id === p1.participantId)?.specialties).toEqual([genres[0], genres[1]]);
+    expect(st.genres).toEqual(genres.map((genre) => ({ genre, remaining: 2 })));
+    expect(st.genreSelect).toBeNull();
+  });
+
+  it("a player without specialties gets specialties_required on buzz", async () => {
+    const { gm, c1 } = await setup("GEN03");
+    gm.send({ type: "startReading" });
+    await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c1.send({ type: "buzz" });
+    expect((await c1.waitFor("error")).code).toBe("specialties_required");
+  });
+
+  it("correct answer → next → genreSelectStarted; the picker's pickGenre opens that genre for everyone", async () => {
+    const { gm, c1, c2, p1, question, sel, genres } = await toGenreSelect("GEN04");
+    expect(sel.select.picker).toEqual({ participantId: p1.participantId, nickname: "みさき" });
+    expect(sel.select.genres.find((g) => g.genre === question.genre)?.remaining).toBe(1);
+    expect((await c2.waitFor("genreSelectStarted")).select.picker.participantId).toBe(p1.participantId);
+    const target = genres.find((g) => g !== question.genre)!;
+    c1.send({ type: "pickGenre", genre: target });
+    for (const c of [gm, c1, c2]) {
+      const q = await c.waitFor("questionStarted");
+      expect(q.question).toMatchObject({ genre: target, number: 2 });
+      expect(q.question.randomGenre).toBeFalsy();
+      const upd = await c.waitFor("genreUpdated", (m) => m.genres!.find((g) => g.genre === target)!.remaining === 1);
+      expect(upd.genres!.find((g) => g.genre === target)?.remaining).toBe(1);
+    }
+    await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "ready");
+  });
+
+  it("rejects pickGenre from a non-picker (forbidden) and a second pick (invalid_state)", async () => {
+    const { gm, c1, c2, genres } = await toGenreSelect("GEN05");
+    c2.send({ type: "pickGenre", genre: genres[0] });
+    expect((await c2.waitFor("error")).code).toBe("forbidden");
+    c1.send({ type: "pickGenre", genre: null });
+    expect((await c1.waitFor("error")).code).toBe("forbidden");
+    c1.send({ type: "pickGenre", genre: "存在しない" });
+    expect((await c1.waitFor("error")).code).toBe("genre_unavailable");
+    c1.send({ type: "pickGenre", genre: genres[0] });
+    await gm.waitFor("questionStarted");
+    c1.send({ type: "pickGenre", genre: genres[1] });
+    expect((await c1.waitFor("error")).code).toBe("invalid_state");
+  });
+
+  it("reconnecting during genreSelect restores picker and counts from state", async () => {
+    const { p1, sel } = await toGenreSelect("GEN06");
+    const c1b = await connect("GEN06", p1.participantToken);
+    const st = await c1b.waitFor("state");
+    expect(st.phase).toBe("genreSelect");
+    expect(st.genreSelect).toEqual(sel.select);
+    expect(st.genres).toEqual(sel.select.genres);
+    expect(st.question).toBeNull();
+  });
+
+  it("the GM picks on behalf, and null picks at random", async () => {
+    const a = await toGenreSelect("GEN07");
+    const target = a.genres.find((g) => g !== a.question.genre)!;
+    a.gm.send({ type: "pickGenre", genre: target });
+    expect((await a.c2.waitFor("questionStarted")).question.genre).toBe(target);
+
+    const b = await toGenreSelect("GEN08");
+    b.gm.send({ type: "pickGenre", genre: null });
+    const q = (await b.c2.waitFor("questionStarted")).question;
+    expect(q.randomGenre).toBe(true);
+    expect(b.genres).toContain(q.genre);
+    expect(q.number).toBe(2);
+  });
+
+  it("kicking the picker opens a random question", async () => {
+    const { gm, c2, p1, genres } = await toGenreSelect("GEN09");
+    gm.send({ type: "kick", participantId: p1.participantId });
+    const q = (await c2.waitFor("questionStarted")).question;
+    expect(q.randomGenre).toBe(true);
+    expect(genres).toContain(q.genre);
+    await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "ready");
+  });
+
+  it("a correct answer is doubled exactly when the question's genre is outside the answerer's specialties", async () => {
+    const ctx = await setup("GEN10", { specialties: true });
+    const inSpecialty = ctx.question.genre === ctx.genres[0] || ctx.question.genre === ctx.genres[1];   // p1 の得意
+    ctx.gm.send({ type: "startReading" });
+    await ctx.c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    ctx.c1.send({ type: "buzz" });
+    await ctx.gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "paused");
+    ctx.gm.send({ type: "judge", participantId: ctx.p1.participantId, correct: true });
+    const mine = await ctx.c1.waitFor("answerResult");
+    const all = await ctx.gm.waitFor("someoneCorrect");
+    for (const m of [mine, all]) {
+      expect(m.points).toBe(inSpecialty ? 100 : 200);
+      expect(m.multiplier).toBe(inSpecialty ? undefined : 2);
+    }
+  });
+
+  it("finish from question goes to finalResult; players cannot finish", async () => {
+    const { gm, c1, c2, p1 } = await setup("GEN11", { specialties: true });
+    c1.send({ type: "finish" });
+    expect((await c1.waitFor("error")).code).toBe("forbidden");
+    gm.send({ type: "finish" });
+    for (const c of [gm, c1, c2]) {
+      const fin = await c.waitFor("finalResult");
+      expect(fin.entries.map((e) => e.participantId)).toContain(p1.participantId);
+    }
+    expect((await (await connect("GEN11", "gm-token")).waitFor("state")).phase).toBe("finalResult");
+    gm.send({ type: "finish" });
+    expect((await gm.waitFor("error")).code).toBe("invalid_state");
+  });
+
+  it("starting a non-genre set broadcasts genreUpdated with null", async () => {
+    const set = await seedSet();
+    await initRoom("GEN12");
+    const gm = await connect("GEN12", "gm-token"); await gm.waitFor("state");
+    gm.send({ type: "start", questionSetId: set.id, carryOverScores: false });
+    expect((await gm.waitFor("genreUpdated")).genres).toBeNull();
+    const st = await (await connect("GEN12", "gm-token")).waitFor("state");
+    expect(st.genres).toBeNull();
+    expect(st.genreSelect).toBeNull();
+  });
+});
