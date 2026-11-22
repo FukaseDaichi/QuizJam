@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { Crown } from "lucide-react";
 
-export function CorrectPopup({ id, nickname, correctRank, points, onDone }: {
-  id: number; nickname: string; correctRank: number; points: number; onDone: (id: number) => void;
+export function CorrectPopup({ id, nickname, correctRank, points, multiplier, onDone }: {
+  id: number; nickname: string; correctRank: number; points: number; multiplier?: number; onDone: (id: number) => void;
 }) {
   useEffect(() => { const t = setTimeout(() => onDone(id), 3000); return () => clearTimeout(t); }, [id, onDone]);
   return (
@@ -10,7 +10,7 @@ export function CorrectPopup({ id, nickname, correctRank, points, onDone }: {
       <Crown size={32} aria-hidden />
       <div>
         <p className="text-2xl font-black">{nickname}さんが正解しました！</p>
-        <p className="text-base font-bold opacity-90">{correctRank}番目 / +{points}点</p>
+        <p className="text-base font-bold opacity-90">{correctRank}番目 / +{points}点{multiplier === 2 && " ×2"}</p>
       </div>
     </div>
   );

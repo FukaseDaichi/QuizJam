@@ -8,13 +8,13 @@ import { promptLength } from "../../shared/buzzer";
  * GM 画面に映る見た目を模した 16:9 のスライドプレビュー。
  * 文字サイズはコンテナ幅（cqw）基準なので、サムネイルでも大画面でも同じ比率で表示される。
  */
-export function TitleSlidePreview({ name, coverImageUrl, questionCount, settings, mode = "anagram", audio = false, compact = false }: {
-  name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode?: QuestionSetMode; audio?: boolean; compact?: boolean;
+export function TitleSlidePreview({ name, coverImageUrl, questionCount, settings, mode = "anagram", audio = false, genreCount, compact = false }: {
+  name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode?: QuestionSetMode; audio?: boolean; genreCount?: number; compact?: boolean;
 }) {
   const timer = settings.timerMode === "none" ? "GMが締切" : settings.timerMode === "fixed" ? `${settings.timerSeconds}秒` : `正解後${settings.timerSeconds}秒`;
   const rules = mode === "buzzer" ? (
     <>
-      全{questionCount}問 ・ <Zap className="inline h-[2.4cqw] w-[2.4cqw] align-[-0.15em]" aria-hidden /> 早押し ・ {audio ? "音声付き" : `${settings.charsPerSecond}文字/秒`}
+      全{questionCount}問 ・ <Zap className="inline h-[2.4cqw] w-[2.4cqw] align-[-0.15em]" aria-hidden /> 早押し ・ {genreCount !== undefined ? `ジャンル選択 ・ ${genreCount} ジャンル${audio ? " ・ 音声付き" : ""}` : audio ? "音声付き" : `${settings.charsPerSecond}文字/秒`}
     </>
   ) : (
     <>

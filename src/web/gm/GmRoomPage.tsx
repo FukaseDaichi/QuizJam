@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowRight, Check, Crown, Home, PanelRightClose, PanelRightOpen, Play, RotateCcw, Settings, Square, Users, X } from "lucide-react";
+import { ArrowRight, Check, Crown, Flag, Home, PanelRightClose, PanelRightOpen, Play, RotateCcw, Settings, Shuffle, Square, Users, X } from "lucide-react";
 import { useRoomSocket } from "../lib/useRoomSocket";
 import { api } from "../lib/api";
 import { storage } from "../lib/storage";
@@ -13,7 +13,8 @@ import { ConnectionBanner } from "../components/ConnectionBanner";
 import { CorrectPopup } from "./CorrectPopup";
 import { Confetti } from "./Confetti";
 import { GmControlPanel } from "./GmControlPanel";
-import { BuzzerQuestion } from "./BuzzerQuestion";
+import { BuzzerQuestion, GenreChip } from "./BuzzerQuestion";
+import { GenreButtons, specialtiesText } from "../components/GenreButtons";
 import { unlockAudio } from "../lib/buzzerAudio";
 import { buzzerScreenPromptSizeClass } from "../lib/slideText";
 import { isLightColor } from "../lib/color";
@@ -67,6 +68,11 @@ export function GmRoomPage() {
   const explanationImageUrl = state.phase === "questionResult" ? state.questionResult?.explanationImageUrl : undefined;
   const buzzerMode = q?.mode === "buzzer";
   const buzzer = state.buzzer;
+  // ジャンル制のときだけ、右カラムに各自の得意ジャンルを出す
+  const genreSet = state.genres !== null;
+  const specialties = genreSet ? Object.fromEntries(state.participants.map((p) => [p.id, p.specialties])) : undefined;
+  const mutedText = light ? "text-slate-500" : "text-slate-400";
+  const genreSelect = state.phase === "genreSelect" ? state.genreSelect : null;
 
   return (
     <main className="grid min-h-full grid-rows-[auto_1fr_auto] bg-slate-900 text-slate-100">
@@ -111,19 +117,20 @@ export function GmRoomPage() {
           {state.phase === "intro" && intro && (
             <div key={intro.index} className="qj-pop mx-auto my-auto w-full max-w-5xl">
               {intro.slide.kind === "title"
-                ? <TitleSlidePreview name={intro.slide.name} coverImageUrl={intro.slide.coverImageUrl} questionCount={intro.slide.questionCount} settings={intro.slide.settings} mode={intro.slide.mode} audio={intro.slide.audio} />
+                ? <TitleSlidePreview name={intro.slide.name} coverImageUrl={intro.slide.coverImageUrl} questionCount={intro.slide.questionCount} settings={intro.slide.settings} mode={intro.slide.mode} audio={intro.slide.audio} genreCount={intro.slide.genreCount} />
                 : <IntroSlidePreview heading={intro.slide.heading} body={intro.slide.body} imageUrl={intro.slide.imageUrl} />}
             </div>
           )}
 
           {(state.phase === "question" || state.phase === "questionResult") && q && (
             <Card tone={light ? "light" : "dark"} className="flex flex-1 flex-col" style={q.background ? { backgroundColor: q.background, borderColor: q.background } : undefined}>
+              {q.genre && state.phase === "questionResult" && <GenreChip genre={q.genre} random={q.randomGenre} muted={mutedText} />}
               {buzzerMode && state.phase === "question" ? (
                 <BuzzerQuestion question={q} buzzer={buzzer} clockOffsetMs={state.clockOffsetMs} light={light} imageHeight={imageHeight} />
               ) : (
                 <>
                   <div className={`flex items-center justify-between ${light ? "text-slate-500" : "text-slate-400"}`}>
-                    <span className="text-xl font-bold">第{q.index + 1}問 / {q.total}問</span>
+                    <span className="text-xl font-bold">第{q.number}問 / {q.total}問</span>
                     {state.phase === "question" && <CountdownTimer deadlineAt={q.deadlineAt} clockOffsetMs={state.clockOffsetMs} size="lg" />}
                   </div>
                   <div key={explanationImageUrl ? `${q.index}-explanation` : q.index} className="qj-pop my-auto flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4">
@@ -149,12 +156,18 @@ export function GmRoomPage() {
                   <p className={`text-5xl font-black ${light ? "text-green-700" : "text-green-400"}`}>{state.questionResult.answers.join(" / ")}</p>
                   <ol className="mt-4 flex flex-wrap justify-center gap-3">
                     {state.questionResult.results.map((r) => (
-                      <li key={r.participantId} className={`rounded-xl px-4 py-2 text-lg ${light ? "bg-white" : "bg-slate-800"}`}><b>{r.correctRank}.</b> {r.nickname} <span className={light ? "text-green-700" : "text-green-400"}>+{r.points}</span></li>
+                      <li key={r.participantId} className={`rounded-xl px-4 py-2 text-lg ${light ? "bg-white" : "bg-slate-800"}`}><b>{r.correctRank}.</b> {r.nickname} <span className={light ? "text-green-700" : "text-green-400"}>+{r.points}{r.multiplier === 2 && " ×2"}</span></li>
                     ))}
                     {state.questionResult.results.length === 0 && <li className={light ? "text-slate-500" : "text-slate-400"}>正解者なし</li>}
                   </ol>
                 </div>
               )}
+            </Card>
+          )}
+
+          {genreSelect && (
+            <Card tone="dark" title={`${genreSelect.picker.nickname}さんがジャンルを選んでいます`} icon={Shuffle} className="flex-1">
+              <GenreButtons genres={genreSelect.genres} tone="dark" onPick={(genre) => send({ type: "pickGenre", genre })} />
             </Card>
           )}
 
@@ -170,11 +183,14 @@ export function GmRoomPage() {
             {showParticipants ? (
               <ul className="space-y-2">
                 {state.participants.map((p) => (
-                  <li key={p.id} className={`qj-slide-in rounded-xl bg-slate-700/60 px-3 py-2 text-lg ${p.connected ? "" : "opacity-40"}`}>{p.nickname}{!p.connected && "（切断）"}</li>
+                  <li key={p.id} className={`qj-slide-in rounded-xl bg-slate-700/60 px-3 py-2 text-lg ${p.connected ? "" : "opacity-40"}`}>
+                    {p.nickname}{!p.connected && "（切断）"}
+                    {genreSet && <span className="block truncate text-xs opacity-70">{specialtiesText(p.specialties)}</span>}
+                  </li>
                 ))}
                 {state.participants.length === 0 && <li className="text-slate-400">QRコードを読み取って参加してもらいましょう</li>}
               </ul>
-            ) : <Leaderboard entries={state.leaderboard} tone="dark" compact />}
+            ) : <Leaderboard entries={state.leaderboard} tone="dark" compact specialties={specialties} showUnchosen={genreSet} />}
           </Card>
         </aside>}
       </div>
@@ -193,13 +209,15 @@ export function GmRoomPage() {
           </>
         )}
         {state.phase === "question" && <Button variant="secondary" size="lg" icon={Square} onClick={() => send({ type: "close" })}>締切</Button>}
-        {state.phase === "questionResult" && <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{q && q.index + 1 >= q.total ? "最終結果へ" : "次の問題へ"}</Button>}
+        {state.phase === "questionResult" && <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{q && q.number >= q.total ? "最終結果へ" : "次の問題へ"}</Button>}
         {state.phase === "finalResult" && <Button variant="brand" size="lg" icon={RotateCcw} onClick={() => send({ type: "endGame" })}>もう1ゲーム</Button>}
-        {(state.phase === "intro" || state.phase === "question" || state.phase === "questionResult") && <Button variant="secondary" size="lg" icon={Home} onClick={() => { if (confirm("ゲームを中断してロビーに戻りますか？")) send({ type: "endGame" }); }}>ロビーへ戻る</Button>}
+        {state.phase === "genreSelect" && <Button variant="secondary" size="lg" icon={Shuffle} onClick={() => send({ type: "pickGenre", genre: null })}>ランダムで決める</Button>}
+        {(state.phase === "question" || state.phase === "questionResult" || state.phase === "genreSelect") && <Button variant="secondary" size="lg" icon={Flag} onClick={() => { if (confirm("ここでゲームを終了して最終結果を表示しますか？")) send({ type: "finish" }); }}>ここで終了</Button>}
+        {(state.phase === "intro" || state.phase === "question" || state.phase === "questionResult" || state.phase === "genreSelect") && <Button variant="secondary" size="lg" icon={Home} onClick={() => { if (confirm("ゲームを中断してロビーに戻りますか？")) send({ type: "endGame" }); }}>ロビーへ戻る</Button>}
         {state.phase === "lobby" && <Link to="/"><Button variant="secondary" size="lg">トップへ</Button></Link>}
       </footer>
 
-      <GmControlPanel open={panelOpen} onClose={closePanel} settings={state.settings} participants={state.participants} joinUrl={joinUrl} send={send} />
+      <GmControlPanel open={panelOpen} onClose={closePanel} settings={state.settings} participants={state.participants} showSpecialties={genreSet} joinUrl={joinUrl} send={send} />
 
       <div className="pointer-events-none fixed left-1/2 top-24 z-40 flex -translate-x-1/2 flex-col gap-3">
         {state.popups.map((p) => <CorrectPopup key={p.id} {...p} onDone={onPopupDone} />)}

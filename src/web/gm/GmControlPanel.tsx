@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Minus, Plus, Settings, UserMinus, UserPlus, Users, X } from "lucide-react";
 import { Button } from "../components/Button";
+import { specialtiesText } from "../components/GenreButtons";
 import type { ClientMessage, SettingsView } from "../../shared/messages";
 import type { LiveSettings, Participant, TimerMode } from "../../shared/types";
 import { TIMER_MODE_LABELS } from "../lib/labels";
@@ -10,11 +11,12 @@ import { TIMER_MODE_LABELS } from "../lib/labels";
  * GM がゲーム中でも開ける管理パネル。
  * 設定の上書き（今の問題にも即時反映）、参加者のスコア調整・キック、途中参加用の QR を扱う。
  */
-export function GmControlPanel({ open, onClose, settings, participants, joinUrl, send }: {
+export function GmControlPanel({ open, onClose, settings, participants, showSpecialties = false, joinUrl, send }: {
   open: boolean;
   onClose: () => void;
   settings: SettingsView;
   participants: Participant[];
+  showSpecialties?: boolean;   // ジャンル制のとき各自の得意ジャンルを出す
   joinUrl: string;
   send: (msg: ClientMessage) => void;
 }) {
@@ -38,7 +40,7 @@ export function GmControlPanel({ open, onClose, settings, participants, joinUrl,
           <button type="button" onClick={onClose} aria-label="閉じる" className="rounded-xl p-2 hover:bg-slate-700"><X size={24} aria-hidden /></button>
         </div>
         <SettingsForm settings={settings} send={send} />
-        <ParticipantList participants={participants} send={send} />
+        <ParticipantList participants={participants} showSpecialties={showSpecialties} send={send} />
         <section>
           <h3 className="mb-3 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-70"><UserPlus size={16} aria-hidden />参加者を追加</h3>
           <div className="rounded-2xl bg-white p-3"><QRCodeSVG value={joinUrl} size={160} /></div>
@@ -161,7 +163,7 @@ function SettingsForm({ settings, send }: { settings: SettingsView; send: (msg: 
   );
 }
 
-function ParticipantList({ participants, send }: { participants: Participant[]; send: (msg: ClientMessage) => void }) {
+function ParticipantList({ participants, showSpecialties, send }: { participants: Participant[]; showSpecialties: boolean; send: (msg: ClientMessage) => void }) {
   const [step, setStep] = useState("100");
   const delta = Math.abs(Math.trunc(Number(step))) || 0;
   const kick = (p: Participant) => {
@@ -179,7 +181,10 @@ function ParticipantList({ participants, send }: { participants: Participant[]; 
       <ul className="space-y-2">
         {participants.map((p) => (
           <li key={p.id} className={`flex items-center gap-2 rounded-xl bg-slate-700/60 px-3 py-2 ${p.connected ? "" : "opacity-50"}`}>
-            <span className="min-w-0 flex-1 truncate text-lg">{p.nickname}{!p.connected && <span className="text-sm text-slate-400">（切断）</span>}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-lg">{p.nickname}{!p.connected && <span className="text-sm text-slate-400">（切断）</span>}</span>
+              {showSpecialties && <span className="block truncate text-xs text-slate-400">{specialtiesText(p.specialties)}</span>}
+            </span>
             <span className="w-20 text-right text-lg font-bold tabular-nums">{p.score}点</span>
             <button type="button" aria-label={`${p.nickname} に${delta}点加算`} disabled={delta === 0} onClick={() => send({ type: "adjustScore", participantId: p.id, delta })} className="rounded-lg bg-green-600 p-2 hover:bg-green-500 disabled:opacity-40"><Plus size={18} aria-hidden /></button>
             <button type="button" aria-label={`${p.nickname} から${delta}点減算`} disabled={delta === 0} onClick={() => send({ type: "adjustScore", participantId: p.id, delta: -delta })} className="rounded-lg bg-orange-600 p-2 hover:bg-orange-500 disabled:opacity-40"><Minus size={18} aria-hidden /></button>
