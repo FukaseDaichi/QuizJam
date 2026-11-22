@@ -62,7 +62,7 @@ describe("GameEngine start", () => {
     const view = startQuestions(e, makeSet({ timerMode: "fixed", timerSeconds: 20 }), false, T0);
     expect(e.phase).toBe("question");
     expect(view).toEqual({
-      index: 0, total: 2, mode: "anagram", prompt: "ごんり", hint: undefined,
+      index: 0, number: 1, total: 2, mode: "anagram", prompt: "ごんり", hint: undefined,
       deadlineAt: T0 + 20_000, maxAttempts: 3,
     });
   });
@@ -265,7 +265,7 @@ describe("GameEngine close / next / final", () => {
     const r = e.next(T0 + 10_000);
     expect(r).toEqual({
       kind: "question",
-      question: { index: 1, total: 2, mode: "anagram", prompt: "なばな", hint: undefined, imageUrl: "/api/images/banana.png", deadlineAt: T0 + 10_000 + 30_000, maxAttempts: 3 },
+      question: { index: 1, number: 2, total: 2, mode: "anagram", prompt: "なばな", hint: undefined, imageUrl: "/api/images/banana.png", deadlineAt: T0 + 10_000 + 30_000, maxAttempts: 3 },
     });
     expect(e.myStatus("p1")).toEqual({ attemptsUsed: 0, correct: false, correctRank: null });
   });
@@ -877,5 +877,192 @@ describe("GameEngine views with question audio", () => {
   it("the title slide says whether every question has audio", () => {
     expect(GameEngine.create("BZV003").start(set(true), false).slide).toMatchObject({ kind: "title", audio: true });
     expect(GameEngine.create("BZV004").start(set(false), false).slide).toMatchObject({ kind: "title", audio: false });
+  });
+});
+
+describe("GameEngine genre mode", () => {
+  const GENRES = ["A", "A", "B", "B", "C"];
+  function genreSet(): QuestionSet {
+    return {
+      id: "gs", name: "ジャンル", mode: "buzzer", settings: { ...DEFAULT_SETTINGS },
+      questions: GENRES.map((genre, i) => ({ id: `q${i}`, type: "anagram" as const, prompt: `問${i}`, answers: [`答${i}`], genre })),
+    };
+  }
+  const stub = (...values: number[]) => { let i = 0; return () => values[i++ % values.length]; };
+  function setup(rng: () => number) {
+    const e = GameEngine.create("ABC123", rng);
+    e.addParticipant("p1", "みさき");
+    e.addParticipant("p2", "たろう");
+    e.start(genreSet(), false);
+    return e;
+  }
+  /** 読み上げ → 早押し → 正解にして questionResult へ */
+  function answerCorrect(e: GameEngine, who = "p1") {
+    e.startReading(T0);
+    e.buzz(who, T0 + 100);
+    e.judge(who, true, T0 + 200);
+  }
+  function asked(e: GameEngine): number[] { return e.snapshot().asked; }
+
+  it("opens question 1 from a random genre and marks it random", () => {
+    const e = setup(stub(0.99, 0));
+    const r = e.next(T0);
+    expect(r.kind).toBe("question");
+    if (r.kind !== "question") return;
+    expect(r.question).toMatchObject({ index: 4, genre: "C", number: 1, total: 5, randomGenre: true });
+    expect(asked(e)).toEqual([4]);
+  });
+
+  it("moves to genreSelect with the correct answerer as picker", () => {
+    const e = setup(stub(0.99, 0));
+    e.next(T0);
+    answerCorrect(e);
+    const r = e.next(T0 + 300);
+    expect(r.kind).toBe("genreSelect");
+    if (r.kind !== "genreSelect") return;
+    expect(r.select.picker).toEqual({ participantId: "p1", nickname: "みさき" });
+    expect(r.select.genres).toEqual([{ genre: "A", remaining: 2 }, { genre: "B", remaining: 2 }, { genre: "C", remaining: 0 }]);
+    expect(e.phase).toBe("genreSelect");
+    expect(e.genreSelectView()).toEqual(r.select);
+  });
+
+  it("the picker's choice opens an unasked question of that genre", () => {
+    const e = setup(stub(0.99, 0, 0));
+    e.next(T0);
+    answerCorrect(e);
+    e.next(T0 + 300);
+    const r = e.pickGenre({ participantId: "p1" }, "A", T0 + 400);
+    expect(r.kind).toBe("question");
+    if (r.kind !== "question") return;
+    expect(r.question).toMatchObject({ index: 0, genre: "A", randomGenre: false, number: 2 });
+    expect(e.phase).toBe("question");
+    expect(e.snapshot().genrePick).toBeNull();
+  });
+
+  it("rejects exhausted and unknown genres, non-pickers, and picks outside genreSelect", () => {
+    const e = setup(stub(0.99, 0, 0));
+    e.next(T0);
+    expect(e.pickGenre({ participantId: "p1" }, "A", T0)).toEqual({ kind: "rejected", code: "invalid_state" });
+    answerCorrect(e);
+    e.next(T0 + 300);
+    expect(e.pickGenre({ participantId: "p1" }, "C", T0 + 400)).toEqual({ kind: "rejected", code: "genre_unavailable" });
+    expect(e.pickGenre({ participantId: "p1" }, "無い", T0 + 400)).toEqual({ kind: "rejected", code: "genre_unavailable" });
+    expect(e.pickGenre({ participantId: "p2" }, "A", T0 + 400)).toEqual({ kind: "rejected", code: "forbidden" });
+    expect(e.pickGenre({ participantId: "p1" }, null, T0 + 400)).toEqual({ kind: "rejected", code: "forbidden" });
+    expect(e.phase).toBe("genreSelect");
+    expect(e.pickGenre({ participantId: "p1" }, "B", T0 + 500).kind).toBe("question");
+    expect(e.currentIndex).toBe(2);
+    expect(e.pickGenre({ participantId: "p1" }, "A", T0 + 600)).toEqual({ kind: "rejected", code: "invalid_state" });
+    expect(e.currentIndex).toBe(2);
+  });
+
+  it("the GM can pick any genre or random", () => {
+    const e = setup(stub(0.99, 0, 0, 0.5, 0));
+    e.next(T0);
+    answerCorrect(e);
+    e.next(T0 + 300);
+    const r = e.pickGenre("gm", "B", T0 + 400);
+    expect(r).toMatchObject({ kind: "question", question: { index: 2, genre: "B", randomGenre: false } });
+    answerCorrect(e, "p2");
+    e.next(T0 + 500);
+    // 残りのあるジャンルは A, B。0.5 → 2 つの 2 番目 = B、残りは位置 3 だけ
+    const r2 = e.pickGenre("gm", null, T0 + 600);
+    expect(r2).toMatchObject({ kind: "question", question: { index: 3, genre: "B", randomGenre: true } });
+  });
+
+  it("goes random when nobody was correct", () => {
+    const e = setup(stub(0.99, 0, 0, 0));
+    e.next(T0);
+    e.closeQuestion(T0 + 100);
+    const r = e.next(T0 + 200);
+    expect(r).toMatchObject({ kind: "question", question: { index: 0, genre: "A", randomGenre: true, number: 2 } });
+  });
+
+  it("skips selection when only one genre has questions left", () => {
+    const e = setup(stub(0, 0, 0, 0));
+    e.next(T0);   // A の 0
+    e.closeQuestion(T0 + 100);
+    e.next(T0 + 200);   // A の 1（ランダム）
+    e.closeQuestion(T0 + 300);
+    e.next(T0 + 400);   // B の 2（ランダム）
+    e.closeQuestion(T0 + 500);
+    e.next(T0 + 600);   // B の 3
+    answerCorrect(e);
+    // 残りは C だけなので選ばせずに C を出す
+    const r = e.next(T0 + 700);
+    expect(r).toMatchObject({ kind: "question", question: { index: 4, genre: "C", randomGenre: false, number: 5 } });
+  });
+
+  it("never repeats a question and ends in final after all are asked", () => {
+    const e = setup(stub(0.3, 0.7, 0.1));
+    e.next(T0);
+    for (let n = 1; n < 5; n++) {
+      e.closeQuestion(T0 + n);
+      expect(e.next(T0 + n).kind).toBe("question");
+    }
+    expect([...asked(e)].sort()).toEqual([0, 1, 2, 3, 4]);
+    e.closeQuestion(T0 + 10);
+    expect(e.next(T0 + 11).kind).toBe("final");
+    expect(e.phase).toBe("finalResult");
+  });
+
+  it("goes random when the picker is kicked during genreSelect", () => {
+    const e = setup(stub(0.99, 0, 0));
+    e.next(T0);
+    answerCorrect(e);
+    e.next(T0 + 300);
+    e.removeParticipant("p1", T0 + 400);
+    expect(e.phase).toBe("question");
+    expect(e.currentQuestionView()).toMatchObject({ randomGenre: true, number: 2 });
+    expect(e.snapshot().genrePick).toBeNull();
+  });
+
+  it("a second next() during genreSelect throws and changes nothing", () => {
+    const e = setup(stub(0.99, 0, 0));
+    e.next(T0);
+    answerCorrect(e);
+    e.next(T0 + 300);
+    const before = e.snapshot();
+    expect(() => e.next(T0 + 400)).toThrow();
+    expect(e.snapshot()).toEqual(before);
+  });
+
+  it("restores old snapshots without asked/genrePick", () => {
+    const e = GameEngine.create("ABC123");
+    e.addParticipant("p1", "みさき");
+    startQuestions(e, makeSet(), false, T0);
+    const old: Partial<EngineState> = e.snapshot();
+    delete old.asked; delete old.genrePick; delete old.randomGenre;
+    const restored = GameEngine.fromSnapshot(old as EngineState);
+    expect(restored.snapshot()).toMatchObject({ asked: [], genrePick: null, randomGenre: false });
+    expect(restored.currentQuestionView()).toMatchObject({ number: 1 });
+  });
+
+  it("non-genre sets still advance in order with number = index + 1", () => {
+    const e = GameEngine.create("ABC123");
+    e.addParticipant("p1", "みさき");
+    const q1 = startQuestions(e, makeSet(), false, T0);
+    expect(q1).toMatchObject({ index: 0, number: 1, total: 2 });
+    expect(q1.genre).toBeUndefined();
+    expect(q1.randomGenre).toBeFalsy();
+    e.closeQuestion(T0 + 1);
+    const r = e.next(T0 + 2);
+    expect(r).toMatchObject({ kind: "question", question: { index: 1, number: 2 } });
+    e.closeQuestion(T0 + 3);
+    expect(e.next(T0 + 4).kind).toBe("final");
+    expect(e.isGenreMode).toBe(false);
+    expect(e.genres()).toBeNull();
+  });
+
+  it("title slide carries genreCount only for genre sets", () => {
+    const g = GameEngine.create("ABC123");
+    const gi = g.start(genreSet(), false);
+    expect(gi.slide).toMatchObject({ kind: "title", genreCount: 3 });
+    expect(g.isGenreMode).toBe(true);
+    expect(g.genres()).toEqual([{ genre: "A", remaining: 2 }, { genre: "B", remaining: 2 }, { genre: "C", remaining: 1 }]);
+    const n = GameEngine.create("ABC123");
+    const ni = n.start(makeSet(), false);
+    expect(ni.slide).not.toHaveProperty("genreCount");
+    expect(GameEngine.create("ABC123").genres()).toBeNull();
   });
 });

@@ -2,7 +2,8 @@ import type { Answer, BuzzerState, LeaderboardEntry, LiveSettings, Participant, 
 import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
 import { isFullyVoiced, playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
-import type { BuzzerView, ErrorCode, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
+import { genreCounts, genresOf, isGenreSet, type GenreCount } from "../shared/genre";
+import type { BuzzerView, ErrorCode, GenreSelectView, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
 
 export interface EngineState {
   roomCode: string;
@@ -20,6 +21,12 @@ export interface EngineState {
   settingsOverride: Partial<LiveSettings>;
   /** 早押しモードで出題中にだけ持つ。それ以外は null */
   buzzer: BuzzerState | null;
+  /** 出題した問題の位置（出題順）。ジャンル制で未出題を数えるのに使う */
+  asked: number[];
+  /** ジャンル選択中だけ持つ。選ぶ人の参加者 ID。それ以外は null */
+  genrePick: { pickerId: string } | null;
+  /** 今の問題をサーバーがランダムで決めたか */
+  randomGenre: boolean;
 }
 
 export type AnswerOutcome =
@@ -30,7 +37,12 @@ export type AnswerOutcome =
 export type NextOutcome =
   | { kind: "intro"; intro: IntroView }
   | { kind: "question"; question: QuestionView }
+  | { kind: "genreSelect"; select: GenreSelectView }
   | { kind: "final"; entries: LeaderboardEntry[] };
+
+export type PickOutcome =
+  | { kind: "question"; question: QuestionView }
+  | { kind: "rejected"; code: ErrorCode };
 
 export type BuzzOutcome =
   | { kind: "accepted"; position: number }          // キュー内の順番（1 が回答中）
@@ -42,9 +54,9 @@ export type JudgeOutcome =
   | { kind: "rejected"; code: ErrorCode };   // 判定対象が回答中の人と違う（二度押しなど）
 
 export class GameEngine {
-  private constructor(private s: EngineState) {}
+  private constructor(private s: EngineState, private rng: () => number) {}
 
-  static create(roomCode: string): GameEngine {
+  static create(roomCode: string, rng: () => number = Math.random): GameEngine {
     return new GameEngine({
       roomCode,
       phase: "lobby",
@@ -58,17 +70,23 @@ export class GameEngine {
       answers: [],
       settingsOverride: {},
       buzzer: null,
-    });
+      asked: [],
+      genrePick: null,
+      randomGenre: false,
+    }, rng);
   }
 
-  static fromSnapshot(state: EngineState): GameEngine {
-    // 旧スナップショットには settingsOverride / introIndex / buzzer / buzzer.positionMs が無い
+  static fromSnapshot(state: EngineState, rng: () => number = Math.random): GameEngine {
+    // 旧スナップショットには settingsOverride / introIndex / buzzer / buzzer.positionMs / asked / genrePick / randomGenre が無い
     return new GameEngine({
       ...structuredClone(state),
       settingsOverride: structuredClone(state.settingsOverride ?? {}),
       introIndex: state.introIndex ?? 0,
       buzzer: state.buzzer ? { ...structuredClone(state.buzzer), positionMs: state.buzzer.positionMs ?? 0, sittingOut: state.buzzer.sittingOut ?? [] } : null,
-    });
+      asked: state.asked ?? [],
+      genrePick: state.genrePick ?? null,
+      randomGenre: state.randomGenre ?? false,
+    }, rng);
   }
 
   snapshot(): EngineState {
@@ -83,6 +101,19 @@ export class GameEngine {
   get introIndex(): number { return this.s.introIndex; }
   get mode(): QuestionSetMode { return this.s.questionSet?.mode ?? "anagram"; }
   private get isBuzzer(): boolean { return this.mode === "buzzer"; }
+  get isGenreMode(): boolean { return !!this.s.questionSet && isGenreSet(this.s.questionSet); }
+
+  /** ジャンル制のセットを読み込み中（lobby 以外）なら、ジャンルごとの残り問題数。それ以外は null */
+  genres(): GenreCount[] | null {
+    if (!this.s.questionSet || this.s.phase === "lobby" || !this.isGenreMode) return null;
+    return genreCounts(this.s.questionSet.questions, this.s.asked);
+  }
+
+  genreSelectView(): GenreSelectView | null {
+    const pick = this.s.genrePick;
+    if (this.s.phase !== "genreSelect" || !pick || !this.s.questionSet) return null;
+    return { picker: { participantId: pick.pickerId, nickname: this.s.participants[pick.pickerId]?.nickname ?? "?" }, genres: this.genres()! };
+  }
 
   // ---- participants ----
   addParticipant(id: string, nickname: string): Participant {
@@ -123,6 +154,8 @@ export class GameEngine {
     if (!p) return null;
     delete this.s.participants[id];
     this.s.answers = this.s.answers.filter((a) => a.participantId !== id);
+    // ジャンルを選ぶ人が消えたら、待たずにランダムで開く
+    if (this.s.phase === "genreSelect" && this.s.genrePick?.pickerId === id) this.openRandomGenre(now);
     const b = this.s.buzzer;
     if (b) {
       const wasAnswering = b.status === "paused" && b.queue[0] === id;
@@ -169,6 +202,9 @@ export class GameEngine {
     this.s.questionSet = structuredClone(set);
     this.s.carryOverScores = carryOverScores;
     this.s.answers = [];
+    this.s.asked = [];
+    this.s.genrePick = null;
+    this.s.randomGenre = false;
     if (!carryOverScores) {
       for (const p of Object.values(this.s.participants)) p.score = 0;
     }
@@ -186,7 +222,7 @@ export class GameEngine {
     const slides = set.introSlides ?? [];
     const i = this.s.introIndex;
     const slide: IntroSlideView = i === 0
-      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode, audio: isFullyVoiced(set.mode, set.questions) }
+      ? { kind: "title", name: set.name, coverImageUrl: set.coverImageUrl, questionCount: set.questions.length, settings: this.settings(0), mode: this.mode, audio: isFullyVoiced(set.mode, set.questions), ...(this.isGenreMode ? { genreCount: genresOf(set.questions).length } : {}) }
       : { kind: "slide", heading: slides[i - 1].heading, body: slides[i - 1].body, imageUrl: slides[i - 1].imageUrl };
     return { index: i, total: 1 + slides.length, slide };
   }
@@ -194,6 +230,8 @@ export class GameEngine {
   protected openQuestion(index: number, now: number): void {
     const settings = this.settings(index);
     this.s.currentIndex = index;
+    this.s.asked.push(index);
+    this.s.genrePick = null;
     this.s.phase = "question";
     this.s.questionStartedAt = now;
     if (this.isBuzzer) {
@@ -217,9 +255,13 @@ export class GameEngine {
     if (!set || (this.s.phase !== "question" && this.s.phase !== "questionResult")) return null;
     const q = set.questions[this.s.currentIndex];
     const hidden = this.isBuzzer && role === "player";
+    const genreMode = this.isGenreMode;
     return {
       index: this.s.currentIndex,
       total: set.questions.length,
+      number: genreMode ? this.s.asked.length : this.s.currentIndex + 1,
+      genre: genreMode ? q.genre : undefined,
+      randomGenre: genreMode ? this.s.randomGenre : undefined,
       mode: this.mode,
       prompt: hidden ? "" : q.prompt,
       hint: hidden ? undefined : q.hint,
@@ -313,10 +355,12 @@ export class GameEngine {
         this.s.introIndex += 1;
         return { kind: "intro", intro: this.introView()! };
       }
-      this.openQuestion(0, now);
+      if (this.isGenreMode) this.openRandomGenre(now);
+      else this.openQuestion(0, now);
       return { kind: "question", question: this.currentQuestionView()! };
     }
     if (this.s.phase !== "questionResult") throw new Error("not in intro or questionResult phase");
+    if (this.isGenreMode) return this.nextGenre(now);
     const nextIndex = this.s.currentIndex + 1;
     if (nextIndex >= this.s.questionSet.questions.length) {
       this.s.phase = "finalResult";
@@ -328,7 +372,58 @@ export class GameEngine {
     return { kind: "question", question: this.currentQuestionView()! };
   }
 
+  /** ジャンル制の questionResult から先へ。正解者が居ればその人にジャンルを選ばせる */
+  private nextGenre(now: number): NextOutcome {
+    const left = this.genres()!.filter((g) => g.remaining > 0);
+    if (left.length === 0) {
+      this.s.phase = "finalResult";
+      this.s.deadlineAt = null;
+      this.s.questionStartedAt = null;
+      return { kind: "final", entries: this.leaderboard() };
+    }
+    if (left.length === 1) {
+      this.openFromGenre(left[0].genre, now, false);
+      return { kind: "question", question: this.currentQuestionView()! };
+    }
+    const pickerId = this.answersFor(this.s.currentIndex).find((a) => a.correct && this.s.participants[a.participantId])?.participantId;
+    if (pickerId !== undefined) {
+      this.s.phase = "genreSelect";
+      this.s.genrePick = { pickerId };
+      this.s.deadlineAt = null;
+      return { kind: "genreSelect", select: this.genreSelectView()! };
+    }
+    this.openRandomGenre(now);
+    return { kind: "question", question: this.currentQuestionView()! };
+  }
+
+  /** 残りのあるジャンルから無作為に 1 つ、そのジャンルの未出題から無作為に 1 問を開く */
+  private openRandomGenre(now: number): void {
+    const g = this.genres()!.filter((c) => c.remaining > 0).map((c) => c.genre);
+    this.openFromGenre(g[Math.floor(this.rng() * g.length)], now, true);
+  }
+
+  private openFromGenre(genre: string, now: number, random: boolean): void {
+    const qs = this.s.questionSet!.questions;
+    const q = qs.map((x, i) => i).filter((i) => qs[i].genre === genre && !this.s.asked.includes(i));
+    this.openQuestion(q[Math.floor(this.rng() * q.length)], now);
+    this.s.randomGenre = random;
+  }
+
+  /** ジャンル選択。by が "gm" ならだれのジャンルでも、参加者なら選ぶ人本人だけ。genre が null は GM の「ランダムで決める」 */
+  pickGenre(by: "gm" | { participantId: string }, genre: string | null, now: number): PickOutcome {
+    const pick = this.s.genrePick;
+    if (this.s.phase !== "genreSelect" || !pick) return { kind: "rejected", code: "invalid_state" };
+    if (by !== "gm" && (by.participantId !== pick.pickerId || genre === null)) return { kind: "rejected", code: "forbidden" };
+    if (genre === null) this.openRandomGenre(now);
+    else {
+      if (!this.genres()!.some((c) => c.genre === genre && c.remaining > 0)) return { kind: "rejected", code: "genre_unavailable" };
+      this.openFromGenre(genre, now, false);
+    }
+    return { kind: "question", question: this.currentQuestionView()! };
+  }
+
   endGame(): void {
+    this.s.genrePick = null;
     this.s.phase = "lobby";
     this.s.buzzer = null;
     this.s.introIndex = 0;

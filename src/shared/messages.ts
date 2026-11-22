@@ -1,4 +1,5 @@
 import type { BuzzerStatus, LeaderboardEntry, LiveSettings, Participant, Phase, QuestionAudio, QuestionSetMode, QuestionSettings, TimerMode } from "./types";
+import type { GenreCount } from "./genre";
 import { isValidCharsPerSecond } from "./validateQuestionSet";
 
 // ---- client -> server ----
@@ -78,7 +79,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
 // ---- server -> client ----
 /** ゲーム冒頭に GM 画面へ映すスライド。index 0 がタイトル、以降が問題セットの introSlides */
 export type IntroSlideView =
-  | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: QuestionSetMode; audio: boolean }  // audio: 早押しで全問に問読み音声がある
+  | { kind: "title"; name: string; coverImageUrl?: string; questionCount: number; settings: QuestionSettings; mode: QuestionSetMode; audio: boolean; genreCount?: number }  // audio: 早押しで全問に問読み音声がある / genreCount: ジャンル制のときだけ
   | { kind: "slide"; heading?: string; body?: string; imageUrl?: string };
 
 export interface IntroView {
@@ -87,9 +88,15 @@ export interface IntroView {
   slide: IntroSlideView;
 }
 
+/** ジャンル選択フェーズの画面。選ぶ人と、ジャンルごとの残り問題数 */
+export interface GenreSelectView { picker: { participantId: string; nickname: string }; genres: GenreCount[] }
+
 export interface QuestionView {
   index: number;
   total: number;
+  number: number;                 // 第 n 問（1 始まり）。ジャンル制では出題した数、それ以外は index + 1
+  genre?: string;
+  randomGenre?: boolean;          // サーバーがランダムで決めた問題
   mode: QuestionSetMode;          // 画面の出し分け。buzzer では参加者の prompt / hint は空
   prompt: string;
   hint?: string;
@@ -161,7 +168,8 @@ export type ErrorCode =
   | "bad_message"
   | "not_reading"
   | "locked_out"
-  | "already_buzzed";
+  | "already_buzzed"
+  | "genre_unavailable";
 
 const SERVER_TYPES = new Set<ServerMessage["type"]>([
   "state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated",

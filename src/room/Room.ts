@@ -207,6 +207,8 @@ export class Room extends DurableObject<Env> {
           this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
           this.broadcastBuzzer();
           await this.armDeadline(r.question.deadlineAt);
+        } else if (r.kind === "genreSelect") {
+          // Task 5 で配線する
         } else {
           this.broadcast({ type: "finalResult", entries: r.entries });
           await this.scheduleCleanup();
@@ -408,6 +410,7 @@ export class Room extends DurableObject<Env> {
       case "not_reading": return "まだ読み上げが始まっていません";
       case "locked_out": return "この問題はもう押せません";
       case "already_buzzed": return "すでに押しています";
+      case "genre_unavailable": return "そのジャンルは選べません";
     }
   }
 }
