@@ -7,7 +7,7 @@ export function specialtiesText(specialties: string[] | undefined): string {
 }
 
 /**
- * ジャンルのボタン群。remaining が 0 のものと disabled のときは押せない。
+ * ジャンルのボタン群。remaining が 0 のもの（残り問題数を出さなくても）と disabled のときは押せない。
  * tone="dark" は GM 画面（大きめ）、"light" はスマホ（高さ 48px 以上）
  */
 export function GenreButtons({ genres, tone, selected = [], marked = [], showRemaining = true, disabled = false, onPick }: {
@@ -24,7 +24,7 @@ export function GenreButtons({ genres, tone, selected = [], marked = [], showRem
     <div className={`grid ${dark ? "grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4" : "grid-cols-2 gap-3"}`}>
       {genres.map((g) => {
         const on = selected.includes(g.genre);
-        const empty = showRemaining && g.remaining === 0;
+        const empty = g.remaining === 0;
         const style = on
           ? "bg-brand border-transparent text-white shadow-lg shadow-purple-500/20"
           : dark ? "border-slate-600 bg-slate-700 text-slate-100 hover:bg-slate-600" : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";

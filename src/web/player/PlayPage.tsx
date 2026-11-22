@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, Crown, Lightbulb, Send, Users, X } from "lucide-react";
+import { Check, Crown, Lightbulb, Send, Tag, Users, X } from "lucide-react";
 import { useRoomSocket } from "../lib/useRoomSocket";
 import { storage } from "../lib/storage";
 import { Button } from "../components/Button";
@@ -8,7 +8,10 @@ import { Card } from "../components/Card";
 import { Leaderboard } from "../components/Leaderboard";
 import { CountdownTimer } from "../components/CountdownTimer";
 import { ConnectionBanner } from "../components/ConnectionBanner";
+import { GenreButtons, specialtiesText } from "../components/GenreButtons";
+import { SPECIALTY_COUNT } from "../../shared/genre";
 import { BuzzerPanel } from "./BuzzerPanel";
+import { SpecialtyPicker } from "./SpecialtyPicker";
 
 export function PlayPage() {
   const { code = "" } = useParams();
@@ -50,6 +53,12 @@ export function PlayPage() {
   const remaining = q?.maxAttempts == null ? null : Math.max(0, q.maxAttempts - (status?.attemptsUsed ?? 0));
   const canAnswer = state.phase === "question" && !status?.correct && (remaining === null || remaining > 0);
   const buzzerMode = q?.mode === "buzzer";
+  // ジャンル制で得意ジャンルが未選択なら、ほかの表示の代わりに選択画面を出す（ロビー・最終結果では出さない）
+  const picking = state.genres !== null && !!me && me.specialties === undefined
+    && (state.phase === "intro" || state.phase === "question" || state.phase === "questionResult" || state.phase === "genreSelect");
+  const phase = picking ? null : state.phase;
+  const pickerNeed = Math.min(SPECIALTY_COUNT, (state.genres ?? []).filter((g) => g.remaining > 0).length);
+  const bonusX2 = state.lastAnswerResult?.correct && state.lastAnswerResult.multiplier === 2;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -68,22 +77,27 @@ export function PlayPage() {
 
       {!state.ready && <p className="text-center text-slate-500">接続しています…</p>}
 
-      {state.ready && (state.phase === "lobby" || state.phase === "intro") && (
+      {state.ready && picking && state.genres && (
+        <SpecialtyPicker genres={state.genres} need={pickerNeed} onDecide={(genres) => send({ type: "chooseSpecialties", genres })} />
+      )}
+
+      {state.ready && (phase === "lobby" || phase === "intro") && (
         <Card icon={Users} title="待機中">
           {state.phase === "intro" && state.questionSetName && <p className="text-brand text-sm font-bold">{state.questionSetName}</p>}
           <p className="text-2xl font-black">まもなく開始します</p>
+          {state.genres !== null && me?.specialties && <p className="mt-2 font-bold text-slate-700">得意ジャンル: {specialtiesText(me.specialties)}</p>}
           <p className="mt-2 text-slate-600">参加者 {state.participants.filter((p) => p.connected).length}名</p>
         </Card>
       )}
 
-      {state.ready && state.phase === "question" && q && buzzerMode && (
+      {state.ready && phase === "question" && q && buzzerMode && (
         <>
           <p className="text-sm font-bold text-slate-500">第{q.index + 1}問 / {q.total}問</p>
-          <BuzzerPanel question={q} buzzer={state.buzzer} meId={me?.id} status={status} lastPoints={state.lastAnswerResult?.correct ? state.lastAnswerResult.points : null} shake={shake} send={send} />
+          <BuzzerPanel question={q} buzzer={state.buzzer} meId={me?.id} status={status} lastPoints={state.lastAnswerResult?.correct ? state.lastAnswerResult.points : null} multiplier={bonusX2 ? 2 : undefined} specialties={state.genres !== null ? me?.specialties : undefined} shake={shake} send={send} />
         </>
       )}
 
-      {state.ready && state.phase === "question" && q && !buzzerMode && (
+      {state.ready && phase === "question" && q && !buzzerMode && (
         <>
           <Card>
             <p className="text-sm font-bold text-slate-500">第{q.index + 1}問 / {q.total}問</p>
@@ -133,7 +147,7 @@ export function PlayPage() {
         </>
       )}
 
-      {state.ready && state.phase === "questionResult" && state.questionResult && (
+      {state.ready && phase === "questionResult" && state.questionResult && (
         <Card className="text-center">
           {state.questionResult.explanationImageUrl && (
             <img src={state.questionResult.explanationImageUrl} alt="解説" className="qj-pop mb-3 max-h-64 w-full rounded-xl bg-slate-100 object-contain" />
@@ -150,14 +164,27 @@ export function PlayPage() {
                 : <b className="text-slate-500">回答しませんでした</b>}
           </p>
           {status?.correct && state.lastAnswerResult?.correct && (
-            <p className="qj-pop text-2xl font-black text-green-700">+{state.lastAnswerResult.points}点</p>
+            <p className="qj-pop text-2xl font-black text-green-700">+{state.lastAnswerResult.points}点{bonusX2 && <span className="ml-2 rounded-lg bg-amber-400 px-2 py-0.5 align-middle text-base text-amber-950">×2</span>}</p>
           )}
           <p className="mt-2 text-slate-600">現在 <b className="text-slate-900">{myRank ?? "-"}位</b> / {me?.score ?? 0}点</p>
           <div className="mt-4 text-left"><Leaderboard entries={state.leaderboard.slice(0, 3)} meId={me?.id} compact /></div>
         </Card>
       )}
 
-      {state.ready && state.phase === "finalResult" && (
+      {state.ready && phase === "genreSelect" && state.genreSelect && (
+        state.genreSelect.picker.participantId === me?.id ? (
+          <Card icon={Tag} title="ジャンル選択">
+            <h2 className="mb-4 text-2xl font-black leading-tight">次のジャンルを選んでください</h2>
+            <GenreButtons genres={state.genreSelect.genres} tone="light" marked={me?.specialties ?? []} onPick={(genre) => send({ type: "pickGenre", genre })} />
+          </Card>
+        ) : (
+          <Card icon={Tag} title="ジャンル選択" className="text-center">
+            <p className="text-2xl font-black leading-tight break-words"><span className="text-brand">{state.genreSelect.picker.nickname}</span>さんがジャンルを選んでいます</p>
+          </Card>
+        )
+      )}
+
+      {state.ready && phase === "finalResult" && (
         <Card title="最終結果" icon={Crown}>
           <p className="qj-pop text-center text-5xl font-black">{myRank ?? "-"}位</p>
           <p className="text-center text-slate-600">{me?.score ?? 0}点</p>
