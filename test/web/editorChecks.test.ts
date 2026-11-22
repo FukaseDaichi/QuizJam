@@ -63,3 +63,34 @@ describe("question audio checks", () => {
     expect(findProblem({ ...draft, questions: [{ ...q, prompt: "ごんりんご", audio }] })).toBeNull();
   });
 });
+
+describe("genre checks", () => {
+  const buzzer = { ...draft, mode: "buzzer" as const };
+  const gq = (id: string, genre?: string) => ({ ...q, id, prompt: "富士山は？", genre });
+
+  it("points at the first question without a genre when only some have one", () => {
+    const d = { ...buzzer, questions: [gq("a", "動物"), gq("b"), gq("c", "植物"), gq("d")] };
+    expect(findProblem(d)).toEqual({ slide: 1, message: "第2問のジャンルを入力してください（ジャンルは全問に付けるか、どの問題にも付けません）" });
+  });
+
+  it("treats a whitespace-only genre as not set", () => {
+    const d = { ...buzzer, questions: [gq("a", "動物"), gq("b", "  "), gq("c", "植物")] };
+    expect(findProblem(d)?.slide).toBe(1);
+  });
+
+  it("demands at least 3 genres when every question has one, counted after trimming", () => {
+    const two = { ...buzzer, questions: [gq("a", "動物"), gq("b", "植物"), gq("c", "動物")] };
+    expect(findProblem(two)).toEqual({ slide: "title", message: "ジャンルは3種類以上にしてください" });
+    const trimmed = { ...buzzer, questions: [gq("a", "動物"), gq("b", "植物"), gq("c", " 動物 ")] };
+    expect(findProblem(trimmed)?.slide).toBe("title");
+  });
+
+  it("accepts a full set of 3 genres, and sets without any genre", () => {
+    expect(findProblem({ ...buzzer, questions: [gq("a", "動物"), gq("b", "植物"), gq("c", "地理")] })).toBeNull();
+    expect(findProblem({ ...buzzer, questions: [gq("a"), gq("b")] })).toBeNull();
+  });
+
+  it("ignores genres in anagram mode", () => {
+    expect(findProblem({ ...draft, questions: [{ ...q, genre: "動物" }, { ...q, id: "q2" }] })).toBeNull();
+  });
+});

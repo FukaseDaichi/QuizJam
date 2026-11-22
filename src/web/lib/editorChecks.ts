@@ -1,6 +1,7 @@
 import type { IntroSlide, Question, QuestionSetMode, QuestionSettings } from "../../shared/types";
 import { MAX_INTRO_SLIDES } from "../../shared/validateQuestionSet";
 import { promptLength } from "../../shared/buzzer";
+import { MIN_GENRES, genresOf } from "../../shared/genre";
 
 /** 編集画面で選択中のスライド。"title" がタイトル、{ intro } が説明スライド、数値が問題のインデックス */
 export type Selection = "title" | number | { intro: number };
@@ -45,6 +46,17 @@ export function findProblem(d: EditorDraft): { slide: Selection; message: string
       }
     } else if (!q.prompt.trim() && !q.imageUrl) {
       return { slide: i, message: `第${i + 1}問の出題文か画像を入れてください（出題文は「生成」で正解から作れます）` };
+    }
+  }
+  if (d.mode === "buzzer") {
+    // ジャンルは全問に付けるかどれにも付けないか（空白だけは未設定。サーバーも同じ扱い）
+    const genres = d.questions.map((q) => q.genre?.trim() || undefined);
+    const withGenre = genres.filter((g) => g !== undefined).length;
+    if (withGenre > 0 && withGenre < d.questions.length) {
+      return { slide: genres.indexOf(undefined), message: `第${genres.indexOf(undefined) + 1}問のジャンルを入力してください（ジャンルは全問に付けるか、どの問題にも付けません）` };
+    }
+    if (withGenre > 0 && genresOf(d.questions.map((_, i) => ({ genre: genres[i] }))).length < MIN_GENRES) {
+      return { slide: "title", message: `ジャンルは${MIN_GENRES}種類以上にしてください` };
     }
   }
   return null;

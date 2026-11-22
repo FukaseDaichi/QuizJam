@@ -8,6 +8,7 @@ import { Button } from "../components/Button";
 import { AdminGate } from "./AdminGate";
 import { DEFAULT_SETTINGS, resolveSettings } from "../../shared/defaults";
 import { isFullyVoiced } from "../../shared/buzzer";
+import { genreCounts } from "../../shared/genre";
 import { MAX_INTRO_SLIDES, validateQuestionSetInput, type QuestionSetInput } from "../../shared/validateQuestionSet";
 import { findProblem, introEmpty, isIntroSel, questionIncomplete, type EditorDraft, type Selection } from "../lib/editorChecks";
 import type { IntroSlide, Question, QuestionSet, QuestionSettings } from "../../shared/types";
@@ -78,6 +79,10 @@ function Editor({ passphrase }: { passphrase: string }) {
   const { questions, settings, introSlides, mode } = draft;
   const total = questions.length;
   const introCount = introSlides.length;
+  // ジャンル名は前後の空白を除いて数える（サーバーと同じ）。早押し以外では出さない
+  const genreList = useMemo(() => genreCounts(mode === "buzzer" ? questions.map((q) => ({ genre: q.genre?.trim() || undefined })) : []), [mode, questions]);
+  const genreNames = useMemo(() => genreList.map((g) => g.genre), [genreList]);
+  const genreSet = genreList.length > 0 && questions.every((q) => q.genre?.trim());
   const current = typeof selected === "number" ? questions[selected] : undefined;
   const currentIntro = isIntroSel(selected) ? introSlides[selected.intro] : undefined;
   // 削除などで選択位置が範囲外になったら手前に寄せる
@@ -235,7 +240,7 @@ function Editor({ passphrase }: { passphrase: string }) {
             <li ref={registerThumb("title")}>
               <button type="button" onClick={() => setSelected("title")} className={thumbClass(selected === "title")} aria-current={selected === "title" ? "true" : undefined}>
                 <span className="w-5 shrink-0 pt-0.5 text-right text-xs font-bold text-slate-400">T</span>
-                <span className="min-w-0 flex-1"><TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} audio={isFullyVoiced(mode, questions)} compact /></span>
+                <span className="min-w-0 flex-1"><TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} audio={isFullyVoiced(mode, questions)} genreCount={genreSet ? genreList.length : undefined} compact /></span>
               </button>
             </li>
             {introSlides.map((s, i) => {
@@ -274,7 +279,7 @@ function Editor({ passphrase }: { passphrase: string }) {
         <section className="flex min-h-0 flex-col items-center justify-center gap-4 overflow-y-auto bg-slate-950/60 p-8">
           <div className="w-full max-w-4xl">
             {selected === "title"
-              ? <TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} audio={isFullyVoiced(mode, questions)} />
+              ? <TitleSlidePreview name={draft.name} coverImageUrl={draft.coverImageUrl} questionCount={total} settings={settings} mode={mode} audio={isFullyVoiced(mode, questions)} genreCount={genreSet ? genreList.length : undefined} />
               : isIntroSel(selected)
                 ? currentIntro && <IntroSlidePreview heading={currentIntro.heading} body={currentIntro.body} imageUrl={currentIntro.imageUrl} />
                 : current && <QuestionSlidePreview question={current} index={selected} total={total} settings={resolveSettings({ id: "", ...draft }, selected)} background={draft.slideBackground} mode={mode} />}
@@ -309,13 +314,13 @@ function Editor({ passphrase }: { passphrase: string }) {
         <aside className="min-h-0 overflow-y-auto border-l border-slate-800 p-5">
           <h2 className="mb-4 text-lg font-black">{heading}</h2>
           {selected === "title" ? (
-            <TitleInspector name={draft.name} coverImageUrl={draft.coverImageUrl} slideBackground={draft.slideBackground} settings={settings} passphrase={passphrase}
+            <TitleInspector name={draft.name} coverImageUrl={draft.coverImageUrl} slideBackground={draft.slideBackground} settings={settings} passphrase={passphrase} genreCounts={genreList}
               onName={(name) => patch({ name })} mode={mode} onMode={(mode) => patch({ mode })} onCover={(coverImageUrl) => patch({ coverImageUrl })} onSlideBackground={(slideBackground) => patch({ slideBackground })}
               onSettings={(s) => patch({ settings: s })} />
           ) : isIntroSel(selected) ? (
             currentIntro && <IntroInspector key={currentIntro.id} slide={currentIntro} passphrase={passphrase} onChange={(p) => updateIntro(selected.intro, p)} />
           ) : current && (
-            <QuestionInspector key={current.id} question={current} index={selected} mode={mode} baseSettings={settings} passphrase={passphrase} onChange={(p) => updateQuestion(selected, p)} />
+            <QuestionInspector key={current.id} question={current} index={selected} mode={mode} baseSettings={settings} passphrase={passphrase} genres={genreNames} onChange={(p) => updateQuestion(selected, p)} />
           )}
         </aside>
       </div>

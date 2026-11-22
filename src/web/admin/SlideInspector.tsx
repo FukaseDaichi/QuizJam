@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { MODE_LABELS, TIMER_MODE_LABELS } from "../lib/labels";
 import { ChevronDown, ChevronRight, Plus, Shuffle, Volume2, X } from "lucide-react";
+import type { GenreCount } from "../../shared/genre";
+import { MAX_GENRE_LENGTH } from "../../shared/genre";
 import type { IntroSlide, Question, QuestionSetMode, QuestionSettings, TimerMode } from "../../shared/types";
 import { MAX_CHARS_PER_SECOND, MIN_CHARS_PER_SECOND } from "../../shared/validateQuestionSet";
 import { shuffleAnagram } from "../../shared/anagram";
@@ -13,8 +15,8 @@ const num = (v: string) => (v === "" ? 0 : Number(v));
 const TIMER_LABELS = TIMER_MODE_LABELS;
 
 /** タイトルスライド＝企画名・表紙・セット全体の設定 */
-export function TitleInspector({ name, mode, coverImageUrl, slideBackground, settings, passphrase, onName, onMode, onCover, onSlideBackground, onSettings }: {
-  name: string; mode: QuestionSetMode; coverImageUrl?: string; slideBackground?: string; settings: QuestionSettings; passphrase: string;
+export function TitleInspector({ name, mode, coverImageUrl, slideBackground, settings, passphrase, genreCounts, onName, onMode, onCover, onSlideBackground, onSettings }: {
+  name: string; mode: QuestionSetMode; coverImageUrl?: string; slideBackground?: string; settings: QuestionSettings; passphrase: string; genreCounts: GenreCount[];
   onName: (v: string) => void; onMode: (v: QuestionSetMode) => void; onCover: (v: string | undefined) => void; onSlideBackground: (v: string | undefined) => void; onSettings: (s: QuestionSettings) => void;
 }) {
   const buzzer = mode === "buzzer";
@@ -29,6 +31,12 @@ export function TitleInspector({ name, mode, coverImageUrl, slideBackground, set
         </select>
         {buzzer && <p className="mt-1 text-xs font-normal text-slate-500">問題文が GM 画面に一文字ずつ表示され、参加者はスマホのボタンで早押しして口頭で答えます。正解・不正解は GM が判定します</p>}
       </Field>
+      {buzzer && genreCounts.length > 0 && (
+        <div className="text-sm font-bold text-slate-300">
+          ジャンル<span className="ml-2 text-xs font-normal text-slate-500">打ち間違いで別のジャンルになっていないか確かめられます</span>
+          <p className="mt-1 break-all font-normal text-slate-200">{genreCounts.map((g) => `${g.genre} ${g.remaining}`).join(" ／ ")}</p>
+        </div>
+      )}
       <ImageField label="表紙画像（任意）" value={coverImageUrl} onChange={onCover} passphrase={passphrase} />
       <div className="text-sm font-bold text-slate-300">
         問題スライドの背景色<span className="ml-2 text-xs font-normal text-slate-500">問題画像の地の色に合わせると画像が背景になじむ</span>
@@ -107,8 +115,8 @@ export function IntroInspector({ slide, passphrase, onChange }: {
 }
 
 /** 問題スライド＝1問分の内容と個別設定 */
-export function QuestionInspector({ question, index, mode, baseSettings, passphrase, onChange }: {
-  question: Question; index: number; mode: QuestionSetMode; baseSettings: QuestionSettings; passphrase: string; onChange: (patch: Partial<Question>) => void;
+export function QuestionInspector({ question, index, mode, baseSettings, passphrase, genres, onChange }: {
+  question: Question; index: number; mode: QuestionSetMode; baseSettings: QuestionSettings; passphrase: string; genres: string[]; onChange: (patch: Partial<Question>) => void;
 }) {
   const answers = question.answers.length ? question.answers : [""];
   const setAnswer = (i: number, v: string) => onChange({ answers: answers.map((a, j) => (j === i ? v : a)) });
@@ -156,6 +164,13 @@ export function QuestionInspector({ question, index, mode, baseSettings, passphr
             <input value={question.prompt} onChange={(e) => onChange({ prompt: e.target.value })} placeholder="例: ごんり" className={`${inputClass} mt-0 text-lg font-bold tracking-widest`} />
             <Button type="button" variant="secondary" icon={Shuffle} disabled={!primary} onClick={() => onChange({ prompt: shuffleAnagram(primary) })} aria-label="正解からシャッフル生成" className="shrink-0">生成</Button>
           </div>
+        </Field>
+      )}
+
+      {buzzer && (
+        <Field label="ジャンル" hint="ジャンル制にするなら全問に付ける（3種類以上）。付けなければ通常の早押し">
+          <input value={question.genre ?? ""} onChange={(e) => onChange({ genre: e.target.value || undefined })} list={`genres-${question.id}`} maxLength={MAX_GENRE_LENGTH} placeholder="例: 動物" className={inputClass} />
+          <datalist id={`genres-${question.id}`}>{genres.map((g) => <option key={g} value={g} />)}</datalist>
         </Field>
       )}
 
