@@ -24,6 +24,8 @@
 - 2026-11-23: ゲーム開始時にサーバーが参加者ごとの状態（得意ジャンルなど）を消しても、start で参加者を運ぶメッセージを配らないとクライアントに前ゲームの値が残る。エンジン単体のテストでは見つからず、Room 経由で2回目の start を通すテストと broadcastState() の追加で直った。
 - 2026-11-23: push 直後に gh run list --commit <短縮SHA> で実行を探すと空が返り、gh run watch が HTTP 404 で落ちた。gh run list --branch main --json databaseId,headSha で ID を取ってから gh run watch <ID> --exit-status にすると待てた
 - 2026-11-23: codex exec で -i/--image を付けると、後ろのプロンプトまで画像のパスとして読まれ「No prompt provided via stdin.」で止まる。--image <file> のあとに - を置き、プロンプトは標準入力から渡すと通った
+- 2026-11-23: .env の QUIZJAM_URL は末尾が / なので、そのまま "$QUIZJAM_URL/api/..." とつなぐと //api になり、PUT が 405 で失敗する。${QUIZJAM_URL%/} で末尾の / を除いてからつなぐと 200 で通った（GET は // のままでも通るので気づきにくい）
+- 2026-11-23: 同じ問題セットの JSON を別のセッションも編集していると、PUT が 200 でも、相手が自分の読んだ版で上書きして変更が消える。反映後は wrangler d1 execute で本番の data を直接読み直して確かめ、ListAgents で同時に動いているセッションを確かめる
 
 ## Domain Knowledge
 （業務・仕様・環境の知識）
@@ -33,6 +35,7 @@
 - 2026-11-23: quiz-tts の align のログは tqdm の進捗行（Align: / Adjustment:）が \r 区切りで大量に混ざる。警告を探すときは tr '\r' '\n' してから進捗行と「Qnn: 揃え」を除くと、残りが警告だけになる
 - 2026-11-23: QuizJam は main への push で GitHub Actions「CI / Deploy」が走り、test の後に D1 マイグレーションと wrangler deploy まで自動で行う。手で npm run deploy する必要はなく、push がそのまま本番反映になる
 - 2026-11-23: auto モードでは、本番の DELETE /api/images/<key> を含む Bash コマンドは、1本にまとめた他の処理ごと分類器に拒否される。DELETE を外して実行し直すと、アップロードと PUT は通った
+- 2026-11-23: QuizJam の問題セットの更新は PUT /api/question-sets/:id で、送った JSON でセット全体を置き換える（merge しない）。本番だけにある項目（coverImageUrl など）がローカルの JSON に無いと消えるので、PUT の前に本番の GET と見比べる
 
 ## Open Questions
 （未解決の疑問）
