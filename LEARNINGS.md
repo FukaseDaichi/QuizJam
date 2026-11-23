@@ -23,6 +23,7 @@
 
 - 2026-11-23: ゲーム開始時にサーバーが参加者ごとの状態（得意ジャンルなど）を消しても、start で参加者を運ぶメッセージを配らないとクライアントに前ゲームの値が残る。エンジン単体のテストでは見つからず、Room 経由で2回目の start を通すテストと broadcastState() の追加で直った。
 - 2026-11-23: push 直後に gh run list --commit <短縮SHA> で実行を探すと空が返り、gh run watch が HTTP 404 で落ちた。gh run list --branch main --json databaseId,headSha で ID を取ってから gh run watch <ID> --exit-status にすると待てた
+- 2026-11-23: codex exec で -i/--image を付けると、後ろのプロンプトまで画像のパスとして読まれ「No prompt provided via stdin.」で止まる。--image <file> のあとに - を置き、プロンプトは標準入力から渡すと通った
 
 ## Domain Knowledge
 （業務・仕様・環境の知識）
@@ -31,6 +32,7 @@
 - 2026-11-23: auto モードでは .dev.vars の ADMIN_PASSPHRASE の値を表示するコマンドが分類器に拒否される。シェル変数に読んで curl のヘッダーに渡すだけなら通るので、ローカルへのセット投入は API でできるが、/admin 画面のログインが要る実機確認はユーザーに頼む必要がある。
 - 2026-11-23: quiz-tts の align のログは tqdm の進捗行（Align: / Adjustment:）が \r 区切りで大量に混ざる。警告を探すときは tr '\r' '\n' してから進捗行と「Qnn: 揃え」を除くと、残りが警告だけになる
 - 2026-11-23: QuizJam は main への push で GitHub Actions「CI / Deploy」が走り、test の後に D1 マイグレーションと wrangler deploy まで自動で行う。手で npm run deploy する必要はなく、push がそのまま本番反映になる
+- 2026-11-23: auto モードでは、本番の DELETE /api/images/<key> を含む Bash コマンドは、1本にまとめた他の処理ごと分類器に拒否される。DELETE を外して実行し直すと、アップロードと PUT は通った
 
 ## Open Questions
 （未解決の疑問）
