@@ -17,6 +17,23 @@ export function outDir(ctx) {
 export function mondaiPath(ctx) {
   return path.join(outDir(ctx), "mondai.wav");
 }
+/** 「問題！」の後に入れる出題の効果音（config の cueWav）。設定が無ければ null、あるのにファイルが無ければ CommandError */
+export function cuePath(ctx) {
+  if (!ctx.config.cueWav) return null;
+  const file = path.resolve(ctx.root, ctx.config.cueWav);
+  if (!fs.existsSync(file)) throw new CommandError(`${rel(ctx, file)} がありません（voice/config.json の cueWav）`);
+  return file;
+}
+/** 各問の mp3 の頭に付くもの（「問題！」と、あれば効果音）。mp3 がこれらより古ければ結合し直す */
+export function headSources(ctx) {
+  const cue = cuePath(ctx);
+  return cue ? [mondaiPath(ctx), cue] : [mondaiPath(ctx)];
+}
+/** 各問の mp3 の頭から問題文の読み始めまでの長さ (ms) */
+export function headMs(ctx) {
+  const cue = cuePath(ctx);
+  return wavInfo(fs.readFileSync(mondaiPath(ctx))).durationMs + (cue ? wavInfo(fs.readFileSync(cue)).durationMs : 0) + ctx.config.pauseMs;
+}
 export function setDir(ctx, setName) {
   return path.join(outDir(ctx), setName);
 }
@@ -156,6 +173,7 @@ export async function runJoin(ctx, { setName, only = [] } = {}) {
     ctx.log("警告: ffmpeg が見つからないので結合を飛ばします（https://ffmpeg.org/ から入れて PATH を通すか、.env の FFMPEG_PATH に置き場所を書く）");
     return { joined: [], skipped: [], failed: [], noFfmpeg: true };
   }
+  const cue = cuePath(ctx);
   const { questions } = loadSet(ctx, setName);
   const targets = selectQuestions(questions, only);
   const dir = setDir(ctx, setName);
@@ -167,12 +185,12 @@ export async function runJoin(ctx, { setName, only = [] } = {}) {
       result.failed.push({ id: q.id, error: "WAV がありません。先に build を実行してください" });
       continue;
     }
-    if (!needsJoin(mp3, [wav, mondai])) {
+    if (!needsJoin(mp3, [wav, ...headSources(ctx)])) {
       result.skipped.push(q.id);
       continue;
     }
     try {
-      ctx.joinQuestion({ mondaiWav: mondai, questionWav: wav, pauseMs: ctx.config.pauseMs, outMp3: mp3 });
+      ctx.joinQuestion({ mondaiWav: mondai, cueWav: cue, questionWav: wav, pauseMs: ctx.config.pauseMs, outMp3: mp3 });
       result.joined.push(q.id);
       ctx.log(`${q.id}: 結合 → ${rel(ctx, mp3)}`);
     } catch (err) {

@@ -255,3 +255,25 @@ test("runBuild: --only のときは台本に無い問を manifest から外さ�
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "voice", "out", "s", "manifest.json"), "utf8"));
   assert.ok("Q03" in manifest.entries);
 });
+
+test("runJoin: cueWav があれば結合に渡し、効果音が mp3 より新しければ結合し直す。ファイルが無ければ CommandError", async () => {
+  const { ctx, root } = makeCtx();
+  writeSet(root, "s", SET);
+  await runMondai(ctx, {});
+  await runBuild(ctx, { setName: "s", only: ["Q01"] });
+  ctx.config = { ...ctx.config, cueWav: "voice/se/cue.wav" };
+  await assert.rejects(runJoin(ctx, { setName: "s", only: ["Q01"] }), /cueWav/);
+  const cue = path.join(root, "voice", "se", "cue.wav");
+  fs.mkdirSync(path.dirname(cue), { recursive: true });
+  fs.writeFileSync(cue, "wav");
+  const joins = [];
+  ctx.joinQuestion = (opts) => { joins.push(opts); fs.writeFileSync(opts.outMp3, "mp3"); };
+  await runJoin(ctx, { setName: "s", only: ["Q01"] });
+  assert.equal(joins[0].cueWav, cue);
+  const past = new Date(Date.now() - 60_000);
+  for (const f of [path.join(root, "voice", "out", "s", "Q01.wav"), path.join(root, "voice", "out", "mondai.wav"), cue]) fs.utimesSync(f, past, past);
+  assert.deepEqual((await runJoin(ctx, { setName: "s", only: ["Q01"] })).skipped, ["Q01"]);
+  const future = new Date(Date.now() + 60_000);
+  fs.utimesSync(cue, future, future);
+  assert.deepEqual((await runJoin(ctx, { setName: "s", only: ["Q01"] })).joined, ["Q01"]);
+});

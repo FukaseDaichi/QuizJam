@@ -5,14 +5,19 @@ export function ffmpegAvailable(ffmpeg = "ffmpeg") {
   return spawnSync(ffmpeg, ["-version"], { stdio: "ignore" }).status === 0;
 }
 
-/** 問題！ → 無音 pauseMs → 問題文 を concat して mp3 にする ffmpeg の引数 */
-export function ffmpegArgs({ mondaiWav, questionWav, pauseMs, outMp3, sampleRate = 24000 }) {
+/** 問題！ →（cueWav があれば出題の効果音）→ 無音 pauseMs → 問題文 を concat して mp3 にする ffmpeg の引数 */
+export function ffmpegArgs({ mondaiWav, cueWav = null, questionWav, pauseMs, outMp3, sampleRate = 24000 }) {
+  const head = cueWav ? ["-i", mondaiWav, "-i", cueWav] : ["-i", mondaiWav];
+  const n = head.length / 2 + 2;
+  // 効果音の形式が違っても concat できるよう、全入力を同じサンプルレート・モノラルに揃える
+  const chain = Array.from({ length: n }, (_, i) => `[${i}:a]aresample=${sampleRate},aformat=sample_fmts=s16:channel_layouts=mono[a${i}]`).join(";");
+  const labels = Array.from({ length: n }, (_, i) => `[a${i}]`).join("");
   return [
     "-y", "-loglevel", "error",
-    "-i", mondaiWav,
+    ...head,
     "-f", "lavfi", "-t", (pauseMs / 1000).toFixed(3), "-i", `anullsrc=r=${sampleRate}:cl=mono`,
     "-i", questionWav,
-    "-filter_complex", "[0:a][1:a][2:a]concat=n=3:v=0:a=1[out]",
+    "-filter_complex", `${chain};${labels}concat=n=${n}:v=0:a=1[out]`,
     "-map", "[out]", "-codec:a", "libmp3lame", "-q:a", "4",
     outMp3,
   ];

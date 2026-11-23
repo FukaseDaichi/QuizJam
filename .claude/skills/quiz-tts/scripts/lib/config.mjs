@@ -19,6 +19,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   sampleText:
     "1955年にタイムスリップした高校生マーティが、<short pause>若き日の両親を結びつけようと奮闘する、<short pause>マイケル・ジェイ・フォックス主演の映画は、何でしょう？",
   pauseMs: 600,
+  cueWav: "",
   outDir: "voice/out",
   setsDir: "voice/sets",
   questionSetsDir: "question-sets",
@@ -39,6 +40,7 @@ export function validateConfig(raw) {
     if (!isNonEmptyString(c[key])) throw new ConfigError(`config.json の ${key} は空でない文字列にしてください`);
   }
   if (typeof c.style !== "string") throw new ConfigError("config.json の style は文字列にしてください");
+  if (typeof c.cueWav !== "string") throw new ConfigError("config.json の cueWav は文字列（WAV のパス。入れないなら空）にしてください");
   if (!Array.isArray(c.candidates) || c.candidates.length === 0 || !c.candidates.every(isNonEmptyString)) {
     throw new ConfigError("config.json の candidates は声名（空でない文字列）の配列にしてください");
   }

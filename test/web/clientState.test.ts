@@ -239,6 +239,29 @@ describe("buzzer mode", () => {
     expect(s.buzzer).toBeNull();
   });
 
+  it("counts sound effects: a buzz, a wrong answer and a correct answer in a buzzer question", () => {
+    const p1 = { participantId: "p1", nickname: "みさき" };
+    let s = applyServerMessage(withState(), { type: "questionStarted", question }, T0);
+    s = applyServerMessage(s, { type: "buzzerUpdated", buzzer }, T0);
+    expect(s.se).toEqual({ buzz: 0, correct: 0, incorrect: 0 });
+    s = applyServerMessage(s, { type: "buzzerUpdated", buzzer: { ...buzzer, status: "paused", queue: [p1] } }, T0);
+    expect(s.se).toEqual({ buzz: 1, correct: 0, incorrect: 0 });
+    s = applyServerMessage(s, { type: "buzzerUpdated", buzzer: { ...buzzer, lockedOut: ["p1"] } }, T0);
+    expect(s.se).toEqual({ buzz: 1, correct: 0, incorrect: 1 });
+    s = applyServerMessage(s, { type: "someoneCorrect", participantId: "p2", nickname: "たろう", correctRank: 1, points: 100 }, T0);
+    s = applyServerMessage(s, { type: "questionClosed", result: { answers: ["富士山"], results: [] } }, T0);
+    expect(s.se).toEqual({ buzz: 1, correct: 1, incorrect: 1 });
+    // 再接続の state では増えない（回答中の状態を受け取り直しても鳴らさない）
+    s = applyServerMessage(s, { ...baseState, phase: "question", question, buzzer: { ...buzzer, status: "paused", queue: [p1] } }, T0);
+    expect(s.se).toEqual({ buzz: 1, correct: 1, incorrect: 1 });
+  });
+
+  it("does not count a correct answer outside buzzer questions", () => {
+    let s = applyServerMessage(withState(), { type: "questionStarted", question: { ...question, mode: "anagram" as const } }, T0);
+    s = applyServerMessage(s, { type: "someoneCorrect", participantId: "p2", nickname: "たろう", correctRank: 1, points: 100 }, T0);
+    expect(s.se.correct).toBe(0);
+  });
+
   it("introStarted and finalResult clear the buzzer view", () => {
     const intro: IntroView = { index: 0, total: 1, slide: { kind: "title", name: "早押し", questionCount: 1, settings: DEFAULT_SETTINGS, mode: "buzzer", audio: false } };
     let s = applyServerMessage(withState(), { type: "buzzerUpdated", buzzer }, T0);

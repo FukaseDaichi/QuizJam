@@ -5,6 +5,7 @@
   "style": "落ち着いたクイズ番組のアナウンサー。ゆっくり、はっきり読む",
   "mondaiText": "問題！",
   "pauseMs": 600,
+  "cueWav": "voice/se/question-cue.wav",
   "outDir": "voice/out",
   "setsDir": "voice/sets",
   "concurrency": 2

@@ -15,7 +15,7 @@ import { Confetti } from "./Confetti";
 import { GmControlPanel } from "./GmControlPanel";
 import { BuzzerQuestion, GenreChip } from "./BuzzerQuestion";
 import { GenreButtons, specialtiesText } from "../components/GenreButtons";
-import { unlockAudio } from "../lib/buzzerAudio";
+import { unlockAudio, useBuzzerSe } from "../lib/buzzerAudio";
 import { buzzerScreenPromptSizeClass } from "../lib/slideText";
 import { isLightColor } from "../lib/color";
 import { IntroSlidePreview, TitleSlidePreview } from "../components/Slides";
@@ -43,6 +43,8 @@ export function GmRoomPage() {
   }, []);
   // 紙吹雪はポップアップごとに噴射する。早押しの正解は someoneCorrect の直後に問題結果へ移るので、フェーズには結び付けない
   const latestPopup = state.popups[state.popups.length - 1];
+  // 早押しの効果音（押した・正解・不正解）
+  useBuzzerSe(state.se, state.question?.mode === "buzzer");
   useEffect(() => { if (state.lastError) { const t = setTimeout(clearError, 3000); return () => clearTimeout(t); } }, [state.lastError, clearError]);
   const onPopupDone = useCallback((id: number) => dismissPopup(id), [dismissPopup]);
 

@@ -1,6 +1,7 @@
 import type { BuzzerView, ErrorCode, GenreSelectView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
 import type { GenreCount } from "../../shared/genre";
 import type { LeaderboardEntry, Participant, Phase } from "../../shared/types";
+import { buzzerSe, type SeName } from "./seCue";
 
 export interface ClientState {
   connected: boolean;
@@ -16,6 +17,8 @@ export interface ClientState {
   me: (Participant & { status: MyAnswerStatus | null }) | null;
   questionSetName: string | null;
   lastAnswerResult: Extract<ServerMessage, { type: "answerResult" }> | null;
+  /** GM 画面の早押しの効果音を鳴らした回数。増えた分だけ鳴らす（描画がまとめられても取りこぼさない） */
+  se: Record<SeName, number>;
   popups: { id: number; nickname: string; correctRank: number; points: number; multiplier?: number; at: number }[];
   finalEntries: LeaderboardEntry[] | null;
   lastError: { code: ErrorCode; message: string; at: number } | null;
@@ -31,7 +34,7 @@ export interface ClientState {
 export const initialClientState: ClientState = {
   connected: false, ready: false, role: null, roomCode: "", phase: "lobby",
   participants: [], leaderboard: [], intro: null, question: null, questionResult: null, me: null,
-  questionSetName: null, lastAnswerResult: null, popups: [], finalEntries: null, lastError: null, clockOffsetMs: 0,
+  questionSetName: null, lastAnswerResult: null, popups: [], se: { buzz: 0, correct: 0, incorrect: 0 }, finalEntries: null, lastError: null, clockOffsetMs: 0,
   correctCountThisQuestion: 0,
   settings: { override: {}, effective: null, mode: null },
   kicked: false,
@@ -104,7 +107,8 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
     }
     case "someoneCorrect": {
       const popup = { id: ++popupSeq, nickname: msg.nickname, correctRank: msg.correctRank, points: msg.points, multiplier: msg.multiplier, at: nowMs };
-      return { ...s, popups: [...s.popups, popup].slice(-5), correctCountThisQuestion: s.correctCountThisQuestion + 1 };
+      const se = s.question?.mode === "buzzer" ? { ...s.se, correct: s.se.correct + 1 } : s.se;
+      return { ...s, se, popups: [...s.popups, popup].slice(-5), correctCountThisQuestion: s.correctCountThisQuestion + 1 };
     }
     case "leaderboard": {
       const scores = new Map(msg.entries.map((e) => [e.participantId, e.score]));
@@ -119,8 +123,10 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
       return { ...s, phase: "questionResult", questionResult: msg.result, buzzer: null };
     case "finalResult":
       return { ...s, phase: "finalResult", finalEntries: msg.entries, leaderboard: msg.entries, question: null, questionResult: null, buzzer: null, genreSelect: null };
-    case "buzzerUpdated":
-      return { ...s, buzzer: msg.buzzer };
+    case "buzzerUpdated": {
+      const name = buzzerSe(s.buzzer, msg.buzzer);
+      return { ...s, buzzer: msg.buzzer, se: name ? { ...s.se, [name]: s.se[name] + 1 } : s.se };
+    }
     case "genreUpdated":
       return { ...s, genres: msg.genres };
     case "genreSelectStarted":

@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BuzzerView } from "../../shared/messages";
 import { audioStartMs } from "./audioPlayback";
+import type { SeName } from "./seCue";
+import buzzUrl from "../assets/se/buzz.mp3";
+import correctUrl from "../assets/se/correct.mp3";
+import incorrectUrl from "../assets/se/incorrect.mp3";
 
 let ctx: AudioContext | null = null;
 
@@ -70,4 +74,40 @@ export function useBuzzerAudio(buffer: AudioBuffer | null, buzzer: BuzzerView | 
 
   const wantsToPlay = !!buffer && audioStartMs(buzzer, Date.now() + clockOffsetMs, 0, buffer.duration * 1000) !== null;
   return { blocked: wantsToPlay && ctxState !== "running" };
+}
+
+const SE_URLS: Record<SeName, string> = { buzz: buzzUrl, correct: correctUrl, incorrect: incorrectUrl };
+const seBuffers: Partial<Record<SeName, Promise<AudioBuffer | null>>> = {};
+
+/** 効果音を取得してデコードする（1 回だけ）。失敗したら null（鳴らさないだけで、進行は止めない） */
+function loadSe(name: SeName): Promise<AudioBuffer | null> {
+  return (seBuffers[name] ??= fetch(SE_URLS[name])
+    .then((res) => { if (!res.ok) throw new Error(`se ${res.status}`); return res.arrayBuffer(); })
+    .then((bytes) => audioContext().decodeAudioData(bytes))
+    .catch(() => null));
+}
+
+/** 効果音を 1 回鳴らす。自動再生の制限で止まっている間は鳴らさない（後からまとめて鳴ることもない） */
+function playSe(name: SeName): void {
+  void loadSe(name).then((buffer) => {
+    const c = audioContext();
+    if (!buffer || c.state !== "running") return;
+    const source = c.createBufferSource();
+    source.buffer = buffer;
+    source.connect(c.destination);
+    source.start();
+  });
+}
+
+/**
+ * GM 画面の早押しの効果音（押した・正解・不正解）。se は clientState が数えた回数で、増えた分だけ鳴らす。
+ * 開いた時点までの分は鳴らさない。preload は早押しの問題を映している間 true にして、先に読み込んでおく
+ */
+export function useBuzzerSe(se: Record<SeName, number>, preload: boolean): void {
+  useEffect(() => { if (preload) for (const name of Object.keys(SE_URLS) as SeName[]) void loadSe(name); }, [preload]);
+  const played = useRef(se);
+  useEffect(() => {
+    for (const name of Object.keys(SE_URLS) as SeName[]) if (se[name] > played.current[name]) playSe(name);
+    played.current = se;
+  }, [se]);
 }

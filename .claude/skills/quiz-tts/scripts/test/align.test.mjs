@@ -186,3 +186,16 @@ test("runAlign: WAV か mondai.wav が mp3 より新しい（join していな�
   assert.deepEqual(calls[0].map((j) => j.id), ["Q02"]);
   assert.deepEqual(Object.keys(readTiming().entries), ["Q02"]);
 });
+
+test("runAlign: cueWav があれば、表示時刻を効果音の長さだけ後ろにずらす", async () => {
+  const { ctx, root, readTiming } = setup();
+  const cue = path.join(root, "voice", "se", "cue.wav");
+  fs.mkdirSync(path.dirname(cue), { recursive: true });
+  fs.writeFileSync(cue, makeWav({ seconds: 1.25 }));
+  const past = new Date(Date.now() - 60_000);
+  fs.utimesSync(cue, past, past);
+  ctx.config = { ...ctx.config, cueWav: "voice/se/cue.wav" };
+  await runAlign(ctx, { setName: "movie" });
+  // offset = 1400 + 効果音 1250 + pauseMs 600
+  assert.deepEqual(readTiming().entries.Q01.revealAtMs, [3550, 4050, 4750]);
+});

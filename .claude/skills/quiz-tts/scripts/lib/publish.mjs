@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CommandError, mondaiPath, rel, setDir } from "./commands.mjs";
+import { CommandError, headSources, rel, setDir } from "./commands.mjs";
 import { needsJoin } from "./join.mjs";
 import { isTimingFresh, readTiming, sha256File } from "./align.mjs";
 
@@ -57,7 +57,7 @@ export async function runPublish(ctx, { setName, baseUrl, passphrase } = {}) {
     const entry = timing.entries[q.id];
     const sha = fs.existsSync(mp3) ? sha256File(mp3) : null;
     // WAV（git 管理外）が手元にあれば、mp3 が今の WAV から作られているかも確かめる
-    const sources = [path.join(dir, `${q.id}.wav`), mondaiPath(ctx)].filter((f) => fs.existsSync(f));
+    const sources = [path.join(dir, `${q.id}.wav`), ...headSources(ctx)].filter((f) => fs.existsSync(f));
     if (!sha || needsJoin(mp3, sources) || !isTimingFresh(entry, prompt, sha)) {
       result.stale.push(q.id);
       continue;

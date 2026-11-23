@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { wavInfo } from "./wav.mjs";
-import { CommandError, loadSet, mondaiPath, rel, selectQuestions, setDir } from "./commands.mjs";
+import { CommandError, headMs, headSources, loadSet, mondaiPath, rel, selectQuestions, setDir } from "./commands.mjs";
 import { computeRevealAtMs, kanaizeNumbers } from "./timing.mjs";
 import { needsJoin } from "./join.mjs";
 
@@ -67,7 +66,7 @@ export async function runAlign(ctx, { setName, only = [], force = false } = {}) 
   const dir = setDir(ctx, setName);
   const timingFile = path.join(dir, "timing.json");
   const timing = readTiming(timingFile, setName);
-  const offsetMs = wavInfo(fs.readFileSync(mondai)).durationMs + ctx.config.pauseMs;
+  const offsetMs = headMs(ctx);
   const result = { aligned: [], skipped: [], failed: [], warnings: [], pruned: [] };
 
   const jobs = [];
@@ -85,8 +84,8 @@ export async function runAlign(ctx, { setName, only = [], force = false } = {}) 
       continue;
     }
     // 時刻は WAV から作り、公開するのは mp3。mp3 が今の WAV・「問題！」から作られていないと音と文字がずれる
-    if (needsJoin(mp3, [wav, mondai])) {
-      result.failed.push({ id: q.id, error: "mp3 が WAV か mondai.wav より古いです。先に join を実行してください" });
+    if (needsJoin(mp3, [wav, ...headSources(ctx)])) {
+      result.failed.push({ id: q.id, error: "mp3 が WAV・mondai.wav・効果音のどれかより古いです。先に join を実行してください" });
       continue;
     }
     const mp3Sha256 = sha256File(mp3);

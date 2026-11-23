@@ -23,7 +23,7 @@ description: 早押しクイズの問題文から問読み（読み上げ）音�
 直したあとのやり直し:
 
 - 問題セットの `prompt`（表示する問題文）だけを直したら、その問は `align` → `preview` → `publish`（タイミング表は問題文の 1 文字ごとに作るため）
-- 台本の `読み` を直したら、`build` → `join` → `align` → `preview` → `publish`（音声が変わるため）。`align` と `publish` は、mp3 が今の WAV や `mondai.wav` より古い（`join` していない）問を止める
+- 台本の `読み` を直したら、`build` → `join` → `align` → `preview` → `publish`（音声が変わるため）。`align` と `publish` は、mp3 が今の WAV・`mondai.wav`・効果音（`cueWav`）より古い（`join` していない）問を止める
 
 ## 台本ファイルの形
 
@@ -66,7 +66,7 @@ description: 早押しクイズの問題文から問読み（読み上げ）音�
 npm run tts -- voices [--text 文]                       # 候補の声で聴き比べ（voice/out/voices/<声名>.wav）
 npm run tts -- mondai [--force]                         # 「問題！」を 1 回だけ生成（voice/out/mondai.wav）
 npm run tts -- build <セット名> [--only Qnn] [--force]  # 台本から各問の WAV（変わった問だけ）
-npm run tts -- join <セット名> [--only Qnn]             # 問題！＋無音＋問題文 → Qnn.full.mp3（ffmpeg）
+npm run tts -- join <セット名> [--only Qnn]             # 問題！＋（出題の効果音）＋無音＋問題文 → Qnn.full.mp3（ffmpeg）
 npm run tts -- align <セット名> [--only Qnn] [--force]  # 各文字の表示時刻 → timing.json（変わった問だけ。uv・ffmpeg）
 npm run tts -- preview <セット名> [--only Qnn]          # timing.json どおりに文字が出る確認用動画 → preview/Qnn.mp4（libass 入りの ffmpeg）
 npm run tts -- publish <セット名>                       # mp3 をアプリに上げ、問題セット JSON に audio を書き込む
@@ -90,7 +90,8 @@ npm run test:tts                                        # スクリプトのテ�
 | `candidates` | `voices` で聴き比べる声名 |
 | `style` | 全問共通の話し方。短い定型文にする |
 | `mondaiText` | 「問題！」の文 |
-| `pauseMs` | 「問題！」と問題文の間の無音（ms） |
+| `pauseMs` | 問題文の前の無音（ms）。効果音があればその後ろに入る |
+| `cueWav` | 「問題！」の直後に入れる出題の効果音（WAV のパス。空なら入れない）。各問の mp3 に焼き込むので、差し替えたら全セットを `join` → `align` → `publish` |
 | `concurrency` | 同時リクエスト数（1〜4） |
 | `questionSetsDir` | 問題セット JSON の置き場所（既定 `question-sets`）。align・publish が `<セット名>.json` を読み書きする |
 | `previewFont` | preview の動画の字幕のフォント。既定は OS ごと（macOS `Hiragino Sans`、Windows `Meiryo`、Linux `Noto Sans CJK JP`）。`voice/config.json` は共有なので、ふつうは書かない |

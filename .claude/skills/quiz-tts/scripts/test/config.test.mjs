@@ -21,6 +21,7 @@ test("validateConfig: 不正な値は ConfigError", () => {
   assert.throws(() => validateConfig({ voice: "" }), ConfigError);
   assert.throws(() => validateConfig({ pauseMs: -1 }), ConfigError);
   assert.throws(() => validateConfig({ pauseMs: 1.5 }), ConfigError);
+  assert.throws(() => validateConfig({ cueWav: 1 }), ConfigError);
   assert.throws(() => validateConfig({ concurrency: 0 }), ConfigError);
   assert.throws(() => validateConfig({ concurrency: 5 }), ConfigError);
   assert.throws(() => validateConfig({ candidates: ["Kore", ""] }), ConfigError);
