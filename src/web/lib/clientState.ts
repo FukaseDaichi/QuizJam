@@ -1,4 +1,4 @@
-import type { BuzzerView, ErrorCode, GenreSelectView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, ServerMessage, SettingsView } from "../../shared/messages";
+import type { BuzzerView, ErrorCode, GenreSelectView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, Role, ServerMessage, SettingsView } from "../../shared/messages";
 import type { GenreCount } from "../../shared/genre";
 import type { LeaderboardEntry, Participant, Phase } from "../../shared/types";
 import { buzzerSe, type SeName } from "./seCue";
@@ -6,7 +6,7 @@ import { buzzerSe, type SeName } from "./seCue";
 export interface ClientState {
   connected: boolean;
   ready: boolean;
-  role: "gm" | "player" | null;
+  role: Role | null;
   roomCode: string;
   phase: Phase;
   participants: Participant[];

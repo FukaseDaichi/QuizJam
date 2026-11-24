@@ -3,7 +3,7 @@ import { isKnownServerMessage, parseClientMessage } from "../../src/shared/messa
 
 describe("isKnownServerMessage", () => {
   it("accepts every type the client handles", () => {
-    for (const type of ["state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated", "introStarted", "questionStarted", "deadlineSet", "answerResult", "someoneCorrect", "leaderboard", "questionClosed", "finalResult", "buzzerUpdated", "genreUpdated", "genreSelectStarted", "specialtiesChosen", "error"]) {
+    for (const type of ["state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated", "introStarted", "questionStarted", "deadlineSet", "answerResult", "someoneCorrect", "leaderboard", "questionClosed", "finalResult", "buzzerUpdated", "genreUpdated", "genreSelectStarted", "specialtiesChosen", "judgePairing", "judgeStatus", "judgeInfo", "judgeRevoked", "error"]) {
       expect(isKnownServerMessage({ type })).toBe(true);
     }
   });
@@ -33,6 +33,12 @@ describe("parseClientMessage buzzer messages", () => {
     expect(parseClientMessage(JSON.stringify({ type: "updateSettings", settings: { charsPerSecond: 0 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "updateSettings", settings: { charsPerSecond: 31 } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "updateSettings", settings: { charsPerSecond: 1.5 } }))).toBeNull();
+  });
+});
+
+describe("parseClientMessage issueJudgePairing", () => {
+  it("parses without payload", () => {
+    expect(parseClientMessage('{"type":"issueJudgePairing"}')).toEqual({ type: "issueJudgePairing" });
   });
 });
 

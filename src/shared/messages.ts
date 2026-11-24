@@ -20,9 +20,10 @@ export type ClientMessage =
   // ジャンル制
   | { type: "chooseSpecialties"; genres: string[] }               // 参加者: 得意ジャンルを選ぶ（1 人 1 回）
   | { type: "pickGenre"; genre: string | null }                   // 選ぶ人（文字列のみ）か GM（null = ランダム）
-  | { type: "finish" };                                           // GM: 途中終了して最終結果へ
+  | { type: "finish" }                                            // GM: 途中終了して最終結果へ
+  | { type: "issueJudgePairing" };                                // GM: 判定用端末のペアリング QR を発行
 
-const CLIENT_TYPES = new Set(["answer", "start", "close", "next", "endGame", "updateSettings", "adjustScore", "kick", "startReading", "buzz", "judge", "chooseSpecialties", "pickGenre", "finish"]);
+const CLIENT_TYPES = new Set(["answer", "start", "close", "next", "endGame", "updateSettings", "adjustScore", "kick", "startReading", "buzz", "judge", "chooseSpecialties", "pickGenre", "finish", "issueJudgePairing"]);
 
 const isPositiveInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0;
 const isNonNegativeInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
@@ -151,9 +152,23 @@ export interface SettingsView {
   mode: QuestionSetMode | null;   // 読み込み中の問題セットの出題形式。管理パネルの欄の出し分けに使う
 }
 
+/** 接続の役割。judge は GM の手元の判定用端末（答えと判定メモが見え、judge メッセージだけ送れる） */
+export type Role = "gm" | "judge" | "player";
+
+/** 判定用端末にだけ送る、早押しの現在の問題の答え合わせ用ビュー */
+export interface JudgeView {
+  questionNumber: number;
+  total: number;
+  genre?: string;
+  prompt: string;
+  answers: string[];
+  judgeNote?: string;
+  revealAtMs?: number[];
+}
+
 export interface StateMessage {
   type: "state";
-  role: "gm" | "player";
+  role: Role;
   serverTime: number;
   roomCode: string;
   phase: Phase;
@@ -169,6 +184,8 @@ export interface StateMessage {
   buzzer: BuzzerView | null;       // 早押しモードで出題中のみ
   genres: GenreCount[] | null;     // ジャンル制のときだけ。ジャンルごとの残り問題数
   genreSelect: GenreSelectView | null;   // genreSelect フェーズのみ
+  judge: JudgeView | null;               // judge の接続にだけ中身を入れる。他は null
+  judgeConnected: boolean;               // 判定用端末が接続中か。GM にだけ意味がある（他は false）
 }
 
 export type ErrorCode =
@@ -193,7 +210,8 @@ export type ErrorCode =
 const SERVER_TYPES = new Set<ServerMessage["type"]>([
   "state", "participantJoined", "participantLeft", "participantRemoved", "kicked", "settingsUpdated",
   "introStarted", "questionStarted", "deadlineSet", "answerResult", "someoneCorrect", "leaderboard",
-  "questionClosed", "finalResult", "buzzerUpdated", "genreUpdated", "genreSelectStarted", "specialtiesChosen", "error",
+  "questionClosed", "finalResult", "buzzerUpdated", "genreUpdated", "genreSelectStarted", "specialtiesChosen",
+  "judgePairing", "judgeStatus", "judgeInfo", "judgeRevoked", "error",
 ]);
 
 /**
@@ -224,4 +242,8 @@ export type ServerMessage =
   | { type: "genreUpdated"; genres: GenreCount[] | null }    // ゲーム開始時（ジャンル制でなければ null）と、問題が開くたび
   | { type: "genreSelectStarted"; select: GenreSelectView }
   | { type: "specialtiesChosen"; participant: Participant }
+  | { type: "judgePairing"; url: string; expiresAt: number }   // GM にだけ
+  | { type: "judgeStatus"; connected: boolean }               // GM にだけ
+  | { type: "judgeInfo"; judge: JudgeView | null }            // judge にだけ
+  | { type: "judgeRevoked" }                                  // 切られる判定用端末にだけ。送ってから close
   | { type: "error"; code: ErrorCode; message: string };

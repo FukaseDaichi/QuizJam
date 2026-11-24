@@ -15,7 +15,7 @@ const baseState: StateMessage = {
   questionSetName: null,
   correctCount: 0,
   settings: { override: {}, effective: null, mode: null },
-  buzzer: null, genres: null, genreSelect: null,
+  buzzer: null, genres: null, genreSelect: null, judge: null, judgeConnected: false,
 };
 
 function withState(): ClientState {

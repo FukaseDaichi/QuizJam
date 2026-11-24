@@ -396,6 +396,8 @@ export class Room extends DurableObject<Env> {
       buzzer: engine.buzzerView(),
       genres: engine.genres(),
       genreSelect: engine.genreSelectView(),
+      judge: null,
+      judgeConnected: false,
     };
   }
 
