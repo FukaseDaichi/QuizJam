@@ -8,3 +8,4 @@ voice/out/*/Q*.wav
 voice/out/voices/
 voice/out/*/preview/
 .claude/skills/quiz-tts/align/.venv/
+.DS_Store
