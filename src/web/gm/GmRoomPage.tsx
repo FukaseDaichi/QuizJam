@@ -13,6 +13,7 @@ import { ConnectionBanner } from "../components/ConnectionBanner";
 import { CorrectPopup } from "./CorrectPopup";
 import { Confetti } from "./Confetti";
 import { GmControlPanel } from "./GmControlPanel";
+import { JudgePairingModal } from "./JudgePairingModal";
 import { BuzzerQuestion, GenreChip } from "./BuzzerQuestion";
 import { GenreButtons, specialtiesText } from "../components/GenreButtons";
 import { unlockAudio, useBuzzerSe } from "../lib/buzzerAudio";
@@ -199,6 +200,9 @@ export function GmRoomPage() {
       </div>
 
       <footer className="flex items-center justify-end gap-3 border-t border-slate-800 px-8 py-4">
+        {buzzerMode && state.phase === "question" && (
+          <p className={`mr-auto text-sm ${state.judgeConnected ? "text-green-400" : "text-slate-500"}`}>判定端末: {state.judgeConnected ? "接続中" : "未接続"}</p>
+        )}
         {state.phase === "intro" && intro && (
           <Button variant="brand" size="lg" icon={ArrowRight} onClick={() => send({ type: "next" })}>{intro.index + 1 >= intro.total ? "第1問へ" : "次へ"}</Button>
         )}
@@ -220,6 +224,7 @@ export function GmRoomPage() {
         {state.phase === "lobby" && <Link to="/"><Button variant="secondary" size="lg">トップへ</Button></Link>}
       </footer>
 
+      <JudgePairingModal pairing={state.judgePairing} clockOffsetMs={state.clockOffsetMs} />
       <GmControlPanel open={panelOpen} onClose={closePanel} settings={state.settings} participants={state.participants} showSpecialties={genreSet} joinUrl={joinUrl} send={send} />
 
       <div className="pointer-events-none fixed left-1/2 top-24 z-40 flex -translate-x-1/2 flex-col gap-3">

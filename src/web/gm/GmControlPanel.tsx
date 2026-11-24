@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Minus, Plus, Settings, UserMinus, UserPlus, Users, X } from "lucide-react";
+import { Minus, Plus, Settings, Smartphone, UserMinus, UserPlus, Users, X } from "lucide-react";
 import { Button } from "../components/Button";
 import { specialtiesText } from "../components/GenreButtons";
 import type { ClientMessage, SettingsView } from "../../shared/messages";
@@ -45,6 +45,9 @@ export function GmControlPanel({ open, onClose, settings, participants, showSpec
           <h3 className="mb-3 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-70"><UserPlus size={16} aria-hidden />参加者を追加</h3>
           <div className="rounded-2xl bg-white p-3"><QRCodeSVG value={joinUrl} size={160} /></div>
           <p className="mt-2 w-[184px] break-all text-xs text-slate-400">{joinUrl}</p>
+          {settings.mode === "buzzer" && (
+            <Button variant="secondary" icon={Smartphone} className="mt-4 w-[184px]" onClick={() => { send({ type: "issueJudgePairing" }); onClose(); }}>判定用スマホをつなぐ</Button>
+          )}
         </section>
       </div>
     </div>
