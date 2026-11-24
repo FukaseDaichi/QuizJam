@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import "./styles.css";
 import { JoinPage } from "./player/JoinPage";
 import { PlayPage } from "./player/PlayPage";
+import { JudgePage } from "./judge/JudgePage";
 import { GmTopPage } from "./gm/GmTopPage";
 import { GmRoomPage } from "./gm/GmRoomPage";
 import { QuestionSetListPage } from "./admin/QuestionSetListPage";
@@ -16,6 +17,7 @@ const router = createBrowserRouter([
   { path: "/gm/:code", element: <GmRoomPage />, errorElement },
   { path: "/play/:code", element: <JoinPage />, errorElement },
   { path: "/play/:code/game", element: <PlayPage />, errorElement },
+  { path: "/judge/:code", element: <JudgePage />, errorElement },
   { path: "/admin", element: <QuestionSetListPage />, errorElement },
   { path: "/admin/:id", element: <QuestionSetEditPage />, errorElement },
 ]);
