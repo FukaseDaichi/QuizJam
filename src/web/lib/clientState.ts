@@ -1,4 +1,4 @@
-import type { BuzzerView, ErrorCode, GenreSelectView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView, Role, ServerMessage, SettingsView } from "../../shared/messages";
+import type { BuzzerView, ErrorCode, GenreSelectView, IntroView, JudgeView, MyAnswerStatus, QuestionResultView, QuestionView, Role, ServerMessage, SettingsView } from "../../shared/messages";
 import type { GenreCount } from "../../shared/genre";
 import type { LeaderboardEntry, Participant, Phase } from "../../shared/types";
 import { buzzerSe, type SeName } from "./seCue";
@@ -29,6 +29,10 @@ export interface ClientState {
   buzzer: BuzzerView | null; // 早押しモードで出題中のみ
   genres: GenreCount[] | null; // ジャンル制のときだけ。ジャンルごとの残り問題数
   genreSelect: GenreSelectView | null; // genreSelect フェーズのみ
+  judge: JudgeView | null; // 判定用端末にだけ入る（答え・判定メモ）
+  judgeConnected: boolean; // GM 画面用。判定用端末が接続中か
+  judgePairing: { url: string; expiresAt: number } | null; // GM 画面用。表示中の QR
+  judgeRevoked: boolean; // 判定用端末が別の端末に置き換えられた
 }
 
 export const initialClientState: ClientState = {
@@ -39,6 +43,7 @@ export const initialClientState: ClientState = {
   settings: { override: {}, effective: null, mode: null },
   kicked: false,
   buzzer: null, genres: null, genreSelect: null,
+  judge: null, judgeConnected: false, judgePairing: null, judgeRevoked: false,
 };
 
 let popupSeq = 0;
@@ -67,6 +72,7 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
         correctCountThisQuestion: msg.correctCount,
         settings: msg.settings,
         buzzer: msg.buzzer, genres: msg.genres, genreSelect: msg.genreSelect,
+        judge: msg.judge, judgeConnected: msg.judgeConnected,
       };
     case "participantJoined":
     case "participantLeft":
@@ -136,6 +142,14 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
         ...s, participants: upsertParticipant(s.participants, msg.participant),
         me: s.me && s.me.id === msg.participant.id ? { ...s.me, specialties: msg.participant.specialties } : s.me,
       };
+    case "judgePairing":
+      return { ...s, judgePairing: { url: msg.url, expiresAt: msg.expiresAt } };
+    case "judgeStatus":
+      return { ...s, judgeConnected: msg.connected, judgePairing: msg.connected ? null : s.judgePairing };
+    case "judgeInfo":
+      return { ...s, judge: msg.judge };
+    case "judgeRevoked":
+      return { ...s, judgeRevoked: true };
     case "error":
       return { ...s, lastError: { code: msg.code, message: msg.message, at: nowMs } };
     default:

@@ -12,6 +12,8 @@ export interface StoredPlayer { participantId: string; participantToken: string;
 export const storage = {
   getGmToken: (code: string) => read<string>(`gm:${code}`),
   setGmToken: (code: string, token: string) => write(`gm:${code}`, token),
+  getJudgeToken: (code: string) => read<string>(`judge:${code}`),
+  setJudgeToken: (code: string, token: string | null) => write(`judge:${code}`, token),
   getPlayer: (code: string) => read<StoredPlayer>(`player:${code}`),
   setPlayer: (code: string, v: StoredPlayer) => write(`player:${code}`, v),
   clearPlayer: (code: string) => write(`player:${code}`, null),

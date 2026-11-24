@@ -30,6 +30,11 @@ export const api = {
       `/api/rooms/${encodeURIComponent(code)}/join`,
       { method: "POST", body: JSON.stringify({ nickname }) },
     ),
+  judgePair: (code: string, pairCode: string) =>
+    call<{ judgeToken: string }>(
+      `/api/rooms/${encodeURIComponent(code)}/judge-pair`,
+      { method: "POST", body: JSON.stringify({ pairCode }) },
+    ),
   listQuestionSets: () => call<QuestionSetSummary[]>("/api/question-sets"),
   getQuestionSet: (id: string) => call<QuestionSet>(`/api/question-sets/${id}`),
   createQuestionSet: (input: QuestionSetInput, passphrase: string) =>

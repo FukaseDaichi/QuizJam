@@ -336,4 +336,35 @@ describe("buzzer mode", () => {
     s = applyServerMessage(s, { type: "someoneCorrect", participantId: "p2", nickname: "たろう", correctRank: 2, points: 100 }, T0);
     expect(s.popups[1].multiplier).toBeUndefined();
   });
+  describe("judge", () => {
+    const view = { questionNumber: 1, total: 3, prompt: "Q", answers: ["A"] };
+
+    it("state puts judge and judgeConnected", () => {
+      const s = applyServerMessage(initialClientState, { ...baseState, role: "judge", judge: view, judgeConnected: true }, T0);
+      expect(s.judge).toEqual(view);
+      expect(s.judgeConnected).toBe(true);
+    });
+
+    it("judgeInfo replaces judge", () => {
+      let s = applyServerMessage(initialClientState, { ...baseState, role: "judge", judge: view }, T0);
+      s = applyServerMessage(s, { type: "judgeInfo", judge: { ...view, questionNumber: 2 } }, T0);
+      expect(s.judge?.questionNumber).toBe(2);
+    });
+
+    it("judgePairing is stored, judgeStatus connected clears it", () => {
+      let s = applyServerMessage(initialClientState, { type: "judgePairing", url: "/judge/ABC123#pair=x", expiresAt: T0 + 1 }, T0);
+      expect(s.judgePairing).toEqual({ url: "/judge/ABC123#pair=x", expiresAt: T0 + 1 });
+      s = applyServerMessage(s, { type: "judgeStatus", connected: false }, T0);
+      expect(s.judgeConnected).toBe(false);
+      expect(s.judgePairing).not.toBeNull();
+      s = applyServerMessage(s, { type: "judgeStatus", connected: true }, T0);
+      expect(s.judgeConnected).toBe(true);
+      expect(s.judgePairing).toBeNull();
+    });
+
+    it("judgeRevoked sets the flag", () => {
+      const s = applyServerMessage(initialClientState, { type: "judgeRevoked" }, T0);
+      expect(s.judgeRevoked).toBe(true);
+    });
+  });
 });
