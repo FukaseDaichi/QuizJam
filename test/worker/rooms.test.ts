@@ -52,6 +52,18 @@ describe("room API", () => {
     ws.webSocket!.close();
   });
 
+  it("forwards judge-pair to the room", async () => {
+    const created = await exports.default.fetch(`${BASE}/api/rooms`, { method: "POST" });
+    const { roomCode } = (await created.json()) as { roomCode: string };
+    const pair = (code: string) => exports.default.fetch(`${BASE}/api/rooms/${code}/judge-pair`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pairCode: "nope" }),
+    });
+    const bad = await pair(roomCode);
+    expect(bad.status).toBe(403);
+    expect(await bad.json()).toEqual({ error: "pair_invalid" });
+    expect((await pair("ZZZZZZ")).status).toBe(404);
+  });
+
   it("upper-cases room codes", async () => {
     const created = await exports.default.fetch(`${BASE}/api/rooms`, { method: "POST" });
     const { roomCode } = (await created.json()) as { roomCode: string };

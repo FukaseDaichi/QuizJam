@@ -167,7 +167,7 @@ Durable Object の SQLite には次を保存する。
 
 | テーブル | 内容 |
 |---|---|
-| `kv` | `snapshot`（`EngineState` の JSON）、`gmToken`、`alarmKind`（`deadline` か `cleanup`） |
+| `kv` | `snapshot`（`EngineState` の JSON）、`gmToken`、`judgeToken`（判定用端末のトークン。ルームに 1 つ）、`judgePair`（ペアリングコードと有効期限の JSON `{ code, expiresAt }`。1 回使うと消す）、`alarmKind`（`deadline` か `cleanup`） |
 | `tokens` | 参加者トークン → 参加者 ID |
 
 状態を変更するたびにスナップショットを書き戻し、オブジェクト起動時に復元する。旧スナップショットに `buzzer` が無ければ `null`、`buzzer.positionMs` が無ければ 0、`buzzer.sittingOut` が無ければ `[]`、`asked` が無ければ `[]`、`genrePick` が無ければ `null`、`randomGenre` が無ければ `false` として復元する。ゲーム開始で `asked`・`genrePick`・`randomGenre` と全員の `specialties` を消す。早押しの正解・不正解も `answers` に `text: ""` で記録する（正解は `correctRank: 1`、`points: basePoints`。不正解は `points: −wrongPenalty`）。

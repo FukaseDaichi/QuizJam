@@ -4,14 +4,18 @@ import { GameEngine, type EngineState } from "./GameEngine";
 import { parseClientMessage, type ClientMessage, type QuestionResultView, type ServerMessage, type StateMessage, type SettingsView, type ErrorCode } from "../shared/messages";
 import { getQuestionSet } from "../worker/questionSets";
 import type { LiveSettings } from "../shared/types";
+import { randomToken } from "../worker/token";
 
-type Attachment = { role: "gm" } | { role: "player"; participantId: string };
+type Attachment = { role: "gm" } | { role: "judge" } | { role: "player"; participantId: string };
 
 const CLEANUP_AFTER_MS = 24 * 60 * 60 * 1000;
+/** 判定用端末のペアリングコードの有効期間 */
+const JUDGE_PAIR_TTL_MS = 5 * 60_000;
 
 export class Room extends DurableObject<Env> {
   private engine: GameEngine | null = null;
   private gmToken: string | null = null;
+  private judgeToken: string | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -21,6 +25,7 @@ export class Room extends DurableObject<Env> {
       const snap = this.kvGet("snapshot");
       if (snap) this.engine = GameEngine.fromSnapshot(JSON.parse(snap) as EngineState);
       this.gmToken = this.kvGet("gmToken");
+      this.judgeToken = this.kvGet("judgeToken");
     });
   }
 
@@ -44,6 +49,7 @@ export class Room extends DurableObject<Env> {
       return this.engine ? Response.json({ roomCode: this.engine.roomCode }) : Response.json({ error: "not_found" }, { status: 404 });
     }
     if (request.method === "POST" && url.pathname === "/join") return this.handleJoin(request);
+    if (request.method === "POST" && url.pathname === "/judge-pair") return this.handleJudgePair(request);
     if (url.pathname === "/ws") return this.handleWebSocket(request, url);
     return Response.json({ error: "not_found" }, { status: 404 });
   }
@@ -78,6 +84,26 @@ export class Room extends DurableObject<Env> {
     return Response.json({ participantId, participantToken, roomCode: this.engine.roomCode });
   }
 
+  /** QR のペアリングコードを判定用トークンに引き換える。コードは 1 回だけ使え、新しいトークンで前の端末を切る */
+  private async handleJudgePair(request: Request): Promise<Response> {
+    if (!this.engine) return Response.json({ error: "not_found" }, { status: 404 });
+    const body = (await request.json().catch(() => ({}))) as { pairCode?: unknown };
+    const stored = this.kvGet("judgePair");
+    const pair = stored ? (JSON.parse(stored) as { code: string; expiresAt: number }) : null;
+    if (!pair || typeof body.pairCode !== "string" || body.pairCode !== pair.code || Date.now() >= pair.expiresAt) {
+      return Response.json({ error: "pair_invalid" }, { status: 403 });
+    }
+    this.ctx.storage.sql.exec("DELETE FROM kv WHERE key = 'judgePair'");
+    const judgeToken = randomToken();
+    this.judgeToken = judgeToken;
+    this.kvSet("judgeToken", judgeToken);
+    for (const sock of this.ctx.getWebSockets("role:judge")) {
+      this.send(sock, { type: "judgeRevoked" });
+      try { sock.close(4001, "judge revoked"); } catch { /* already closed */ }
+    }
+    return Response.json({ judgeToken });
+  }
+
   private handleWebSocket(request: Request, url: URL): Response {
     if (request.headers.get("Upgrade") !== "websocket") return new Response("expected websocket", { status: 426 });
     if (!this.engine) return Response.json({ error: "not_found" }, { status: 404 });
@@ -87,7 +113,7 @@ export class Room extends DurableObject<Env> {
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
-    const tags = attachment.role === "gm" ? ["role:gm"] : ["role:player", `pid:${attachment.participantId}`];
+    const tags = attachment.role === "player" ? ["role:player", `pid:${attachment.participantId}`] : [`role:${attachment.role}`];
     this.ctx.acceptWebSocket(server, tags);
     server.serializeAttachment(attachment);
 
@@ -96,6 +122,7 @@ export class Room extends DurableObject<Env> {
       this.save();
       if (p) this.broadcast({ type: "participantJoined", participant: p }, server);
     }
+    if (attachment.role === "judge") this.sendToGm({ type: "judgeStatus", connected: true });
     server.send(JSON.stringify(this.stateFor(attachment)));
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -103,6 +130,7 @@ export class Room extends DurableObject<Env> {
   private resolveToken(token: string): Attachment | null {
     if (!token) return null;
     if (this.gmToken && token === this.gmToken) return { role: "gm" };
+    if (this.judgeToken && token === this.judgeToken) return { role: "judge" };
     const rows = this.ctx.storage.sql.exec("SELECT participant_id FROM tokens WHERE token = ?", token).toArray() as { participant_id: string }[];
     return rows[0] ? { role: "player", participantId: rows[0].participant_id } : null;
   }
@@ -131,6 +159,7 @@ export class Room extends DurableObject<Env> {
         if (p) this.broadcast({ type: "participantLeft", participant: p });
       }
     }
+    if (attachment?.role === "judge") this.sendToGm({ type: "judgeStatus", connected: this.judgeConnected(ws) });
     try { ws.close(code, reason); } catch { /* already closed */ }
   }
 
@@ -184,6 +213,7 @@ export class Room extends DurableObject<Env> {
     }
 
     if (msg.type === "pickGenre") {
+      if (attachment.role === "judge") return this.sendError(ws, "forbidden", this.errorText("forbidden"));
       const outcome = engine.pickGenre(attachment.role === "gm" ? "gm" : { participantId: attachment.participantId }, msg.genre, now);
       if (outcome.kind === "rejected") return this.sendError(ws, outcome.code, this.errorText(outcome.code));
       this.save();
@@ -191,7 +221,10 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    if (attachment.role !== "gm") return this.sendError(ws, "forbidden", "GMのみ操作できます");
+    // 判定用端末が送れるのは judge だけ。それ以外の GM 操作は GM だけ
+    if (attachment.role !== "gm" && !(attachment.role === "judge" && msg.type === "judge")) {
+      return this.sendError(ws, "forbidden", "GMのみ操作できます");
+    }
 
     switch (msg.type) {
       case "start": {
@@ -208,6 +241,7 @@ export class Room extends DurableObject<Env> {
         this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
         // ジャンル制でなければ null。古いクライアントはこの未知の type で再読み込みされる
         this.broadcast({ type: "genreUpdated", genres: engine.genres() });
+        this.sendJudgeInfo();
         // intro には締切が無い。第1問に入るときに armDeadline する
         await this.scheduleCleanup();
         return;
@@ -239,6 +273,7 @@ export class Room extends DurableObject<Env> {
         const entries = engine.finish();
         this.save();
         this.broadcast({ type: "finalResult", entries });
+        this.sendJudgeInfo();
         await this.scheduleCleanup();
         return;
       }
@@ -246,6 +281,7 @@ export class Room extends DurableObject<Env> {
         engine.endGame();
         this.save();
         this.broadcastState();
+        this.sendJudgeInfo();
         await this.scheduleCleanup();
         return;
       }
@@ -295,6 +331,14 @@ export class Room extends DurableObject<Env> {
         this.broadcastBuzzer();
         return;
       }
+      case "issueJudgePairing": {
+        const code = randomToken();
+        const expiresAt = now + JUDGE_PAIR_TTL_MS;
+        // 前のコードは上書きで捨てる。つながっている判定用端末はまだ切らない（読み取られた時に切る）
+        this.kvSet("judgePair", JSON.stringify({ code, expiresAt }));
+        this.send(ws, { type: "judgePairing", url: `/judge/${engine.roomCode}#pair=${code}`, expiresAt });
+        return;
+      }
       case "judge": {
         const view = engine.buzzerView();
         if (!view || view.status !== "paused" || view.queue.length === 0) return this.sendError(ws, "invalid_state", "回答中の参加者がいません");
@@ -327,6 +371,7 @@ export class Room extends DurableObject<Env> {
     // 問題ごとの上書きで効く設定が変わりうる
     this.broadcast({ type: "settingsUpdated", settings: this.settingsView() });
     this.broadcastBuzzer();
+    this.sendJudgeInfo();
     await this.armDeadline(engine.currentQuestionView()!.deadlineAt);
   }
 
@@ -339,6 +384,7 @@ export class Room extends DurableObject<Env> {
     this.save();
     this.broadcast({ type: "questionClosed", result });
     this.broadcast({ type: "leaderboard", entries: this.engine!.leaderboard() });
+    this.sendJudgeInfo();
     await this.scheduleCleanup();
   }
 
@@ -365,6 +411,7 @@ export class Room extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
       this.engine = null;
       this.gmToken = null;
+      this.judgeToken = null;
     }
   }
 
@@ -396,8 +443,8 @@ export class Room extends DurableObject<Env> {
       buzzer: engine.buzzerView(),
       genres: engine.genres(),
       genreSelect: engine.genreSelectView(),
-      judge: null,
-      judgeConnected: false,
+      judge: attachment.role === "judge" ? engine.judgeView() : null,
+      judgeConnected: attachment.role === "gm" && this.judgeConnected(),
     };
   }
 
@@ -420,6 +467,21 @@ export class Room extends DurableObject<Env> {
   private broadcastBuzzer(): void {
     const buzzer = this.engine!.buzzerView();
     if (buzzer) this.broadcast({ type: "buzzerUpdated", buzzer });
+  }
+
+  /** 判定用端末が 1 台でもつながっているか。切断処理中のソケットは except で外す */
+  private judgeConnected(except?: WebSocket): boolean {
+    return this.ctx.getWebSockets("role:judge").some((w) => w !== except && w.readyState === WebSocket.OPEN);
+  }
+
+  /** 答えと判定メモは判定用端末にだけ送る（broadcast に載せない） */
+  private sendJudgeInfo(): void {
+    const judge = this.engine!.judgeView();
+    for (const sock of this.ctx.getWebSockets("role:judge")) this.send(sock, { type: "judgeInfo", judge });
+  }
+
+  private sendToGm(msg: ServerMessage): void {
+    for (const sock of this.ctx.getWebSockets("role:gm")) this.send(sock, msg);
   }
 
   private sendToParticipant(participantId: string, msg: ServerMessage): void {

@@ -33,6 +33,13 @@ roomRoutes.post("/api/rooms/:code/join", async (c) => {
   return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
 });
 
+roomRoutes.post("/api/rooms/:code/judge-pair", async (c) => {
+  const res = await stub(c.env, c.req.param("code")).fetch("http://room/judge-pair", {
+    method: "POST", body: await c.req.text(),
+  });
+  return new Response(res.body, { status: res.status, headers: { "Content-Type": "application/json" } });
+});
+
 roomRoutes.get("/ws/room/:code", async (c) => {
   if (c.req.header("Upgrade") !== "websocket") return c.json({ error: "expected_websocket" }, 426);
   const token = c.req.query("token") ?? "";

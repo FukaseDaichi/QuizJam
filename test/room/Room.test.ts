@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:workers";
-import { runDurableObjectAlarm } from "cloudflare:test";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import type { ServerMessage } from "../../src/shared/messages";
 import { createQuestionSet } from "../../src/worker/questionSets";
 import { DEFAULT_SETTINGS } from "../../src/shared/defaults";
@@ -26,12 +26,15 @@ async function join(code: string, nickname: string) {
 
 class Client {
   received: ServerMessage[] = [];
+  /** 受け取ったすべてのメッセージ（waitFor で取り除かない） */
+  log: ServerMessage[] = [];
   private waiters: ((m: ServerMessage) => void)[] = [];
   constructor(public ws: WebSocket) {
     ws.accept();
     ws.addEventListener("message", (ev) => {
       const m = JSON.parse(ev.data as string) as ServerMessage;
       this.received.push(m);
+      this.log.push(m);
       this.waiters.splice(0).forEach((w) => w(m));
     });
   }
@@ -724,6 +727,212 @@ describe("Room DO buzzer mode", () => {
     expect(rebased.buzzer.status).toBe("reading");
     expect(rebased.buzzer.readingStartedAt!).toBeGreaterThanOrEqual(reading.buzzer.readingStartedAt!);
     expect((await gm.waitFor("settingsUpdated", (m) => m.settings.override.charsPerSecond === 20)).settings.effective?.charsPerSecond).toBe(20);
+  });
+});
+
+describe("Room DO judge device", () => {
+  const PROMPT = "日本で一番高い山は何でしょう？";
+  const NOTE = "山だけは不正解";
+  async function seedJudgeSet() {
+    return createQuestionSet(testEnv.DB, {
+      name: "早押し判定", mode: "buzzer",
+      settings: { ...DEFAULT_SETTINGS, charsPerSecond: 5, wrongPenalty: 20 },
+      questions: [
+        { id: "b1", type: "anagram", prompt: PROMPT, answers: ["富士山"], judgeNote: NOTE },
+        { id: "b2", type: "anagram", prompt: "二番目は？", answers: ["北岳"] },
+      ],
+    });
+  }
+  /** GM がペアリング QR を出し、そのコードで判定用トークンを受け取る */
+  async function issueCode(gm: Client, code: string) {
+    gm.send({ type: "issueJudgePairing" });
+    const pairing = await gm.waitFor("judgePairing");
+    const m = pairing.url.match(new RegExp(`^/judge/${code}#pair=([0-9a-f]{64})$`));
+    expect(m).not.toBeNull();
+    return { pairCode: m![1], expiresAt: pairing.expiresAt };
+  }
+  function postPair(code: string, pairCode: string) {
+    return stubFor(code).fetch("http://room/judge-pair", { method: "POST", body: JSON.stringify({ pairCode }) });
+  }
+  async function pair(gm: Client, code: string) {
+    const { pairCode } = await issueCode(gm, code);
+    const res = await postPair(code, pairCode);
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { judgeToken: string }).judgeToken;
+  }
+  /** 判定用端末をつないでから早押しセットを開始し、第1問まで進める */
+  async function setup(code: string) {
+    const set = await seedJudgeSet();
+    await initRoom(code);
+    const gm = await connect(code, "gm-token");
+    await gm.waitFor("state");
+    const judgeToken = await pair(gm, code);
+    const jd = await connect(code, judgeToken);
+    expect((await jd.waitFor("state")).role).toBe("judge");
+    await gm.waitFor("judgeStatus", (m) => m.connected);
+    const p1 = await join(code, "みさき");
+    const p2 = await join(code, "たろう");
+    const c1 = await connect(code, p1.participantToken);
+    const c2 = await connect(code, p2.participantToken);
+    await c1.waitFor("state"); await c2.waitFor("state");
+    await startGame(gm, set.id);
+    await gm.waitFor("questionStarted");
+    await c1.waitFor("questionStarted"); await c2.waitFor("questionStarted");
+    const info = await jd.waitFor("judgeInfo", (m) => m.judge !== null);
+    jd.received.length = 0;   // 開始時の judgeInfo(null) などを捨てる
+    return { set, gm, jd, judgeToken, p1, p2, c1, c2, info };
+  }
+
+  it("pairs once: the QR code yields a judge token, a second use is 403", async () => {
+    await initRoom("JDG01");
+    const gm = await connect("JDG01", "gm-token");
+    await gm.waitFor("state");
+    const now = Date.now();
+    const { pairCode, expiresAt } = await issueCode(gm, "JDG01");
+    expect(expiresAt).toBeGreaterThanOrEqual(now + 5 * 60_000 - 1000);
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + 5 * 60_000 + 1000);
+    const res = await postPair("JDG01", pairCode);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { judgeToken: string }).judgeToken).toMatch(/^[0-9a-f]{64}$/);
+    const again = await postPair("JDG01", pairCode);
+    expect(again.status).toBe(403);
+    expect(await again.json()).toEqual({ error: "pair_invalid" });
+    expect((await postPair("JDG01", "nope")).status).toBe(403);
+    // ルームが無ければ 404
+    expect((await postPair("JDGNONE", pairCode)).status).toBe(404);
+  });
+
+  it("an expired pairing code is 403", async () => {
+    await initRoom("JDG02");
+    const gm = await connect("JDG02", "gm-token");
+    await gm.waitFor("state");
+    const { pairCode } = await issueCode(gm, "JDG02");
+    await runInDurableObject(stubFor("JDG02"), (_instance, state) => {
+      state.storage.sql.exec("UPDATE kv SET value = ? WHERE key = 'judgePair'", JSON.stringify({ code: pairCode, expiresAt: Date.now() - 1 }));
+    });
+    expect((await postPair("JDG02", pairCode)).status).toBe(403);
+  });
+
+  it("issuing a new pairing code discards the previous one", async () => {
+    await initRoom("JDG03");
+    const gm = await connect("JDG03", "gm-token");
+    await gm.waitFor("state");
+    const first = await issueCode(gm, "JDG03");
+    const second = await issueCode(gm, "JDG03");
+    expect((await postPair("JDG03", first.pairCode)).status).toBe(403);
+    expect((await postPair("JDG03", second.pairCode)).status).toBe(200);
+  });
+
+  it("the judge sees answers and judgeNote; GM and players never do", async () => {
+    const { gm, jd, p1, c1, c2, info } = await setup("JDG04");
+    expect(info.judge).toMatchObject({ questionNumber: 1, total: 2, prompt: PROMPT, answers: ["富士山"], judgeNote: NOTE });
+    // 判定用端末の再接続でも state に載る。問題文・音声は参加者と同じく隠す
+    const jd2 = await connect("JDG04", (await pair(gm, "JDG04")));
+    const st = await jd2.waitFor("state");
+    expect(st.judge).toMatchObject({ answers: ["富士山"], judgeNote: NOTE });
+    expect(st.question?.prompt).toBe("");
+    expect(st.me).toBeNull();
+    // GM・参加者の再接続の state には載らない
+    const gm2 = await connect("JDG04", "gm-token");
+    expect((await gm2.waitFor("state")).judge).toBeNull();
+
+    gm.send({ type: "startReading" });
+    await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c1.send({ type: "buzz" });
+    await gm.waitFor("buzzerUpdated", (m) => m.buzzer.status === "paused");
+    jd2.send({ type: "judge", participantId: p1.participantId, correct: true });
+    await gm.waitFor("questionClosed");
+    await c1.waitFor("questionClosed"); await c2.waitFor("questionClosed");
+    expect(jd.log.length).toBeGreaterThan(0);
+
+    for (const client of [gm, gm2, c1, c2]) {
+      for (const m of client.log) {
+        if (m.type === "questionClosed") continue;
+        const json = JSON.stringify(m);
+        expect(json).not.toContain("富士山");
+        expect(json).not.toContain(NOTE);
+        expect(m.type).not.toBe("judgeInfo");
+      }
+    }
+  });
+
+  it("the judge can judge the answerer but nothing else", async () => {
+    const { gm, jd, p1, c1 } = await setup("JDG05");
+    gm.send({ type: "startReading" });
+    await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c1.send({ type: "buzz" });
+    await jd.waitFor("buzzerUpdated", (m) => m.buzzer.status === "paused");
+    jd.send({ type: "judge", participantId: p1.participantId, correct: false });
+    expect(await c1.waitFor("answerResult")).toMatchObject({ correct: false, points: -20 });
+
+    const attempts: unknown[] = [
+      { type: "startReading" },
+      { type: "next" },
+      { type: "close" },
+      { type: "pickGenre", genre: null },
+      { type: "adjustScore", participantId: p1.participantId, delta: 10 },
+      { type: "issueJudgePairing" },
+      { type: "buzz" },
+      { type: "answer", text: "富士山" },
+    ];
+    for (const a of attempts) {
+      jd.send(a);
+      expect((await jd.waitFor("error")).code).toBe("forbidden");
+    }
+  });
+
+  it("pairing a new device revokes the old one", async () => {
+    await initRoom("JDG06");
+    const gm = await connect("JDG06", "gm-token");
+    await gm.waitFor("state");
+    const oldToken = await pair(gm, "JDG06");
+    const old = await connect("JDG06", oldToken);
+    await old.waitFor("state");
+    // QR を出しただけでは切らない
+    await issueCode(gm, "JDG06");
+    const newToken = await pair(gm, "JDG06");
+    expect(newToken).not.toBe(oldToken);
+    await old.waitFor("judgeRevoked");
+    const res = await stubFor("JDG06").fetch(`http://room/ws?token=${oldToken}`, { headers: { Upgrade: "websocket" } });
+    expect(res.status).toBe(401);
+    const fresh = await connect("JDG06", newToken);
+    expect((await fresh.waitFor("state")).role).toBe("judge");
+    expect(old.log.filter((m) => m.type === "judgeRevoked")).toHaveLength(1);
+  });
+
+  it("GM gets judgeStatus and judgeConnected in state", async () => {
+    await initRoom("JDG07");
+    const gm = await connect("JDG07", "gm-token");
+    expect((await gm.waitFor("state")).judgeConnected).toBe(false);
+    const token = await pair(gm, "JDG07");
+    const jd = await connect("JDG07", token);
+    await jd.waitFor("state");
+    await gm.waitFor("judgeStatus", (m) => m.connected);
+    expect((await (await connect("JDG07", "gm-token")).waitFor("state")).judgeConnected).toBe(true);
+    // 参加者には意味が無いので false
+    const c1 = await connect("JDG07", (await join("JDG07", "みさき")).participantToken);
+    expect((await c1.waitFor("state")).judgeConnected).toBe(false);
+
+    jd.ws.close(1000, "bye");
+    await gm.waitFor("judgeStatus", (m) => !m.connected);
+    expect((await (await connect("JDG07", "gm-token")).waitFor("state")).judgeConnected).toBe(false);
+  });
+
+  it("judgeInfo is null outside a buzzer question", async () => {
+    const { gm, jd, judgeToken } = await setup("JDG08");
+    gm.send({ type: "close" });
+    await gm.waitFor("questionClosed");
+    expect((await jd.waitFor("judgeInfo")).judge).toBeNull();
+    const jd2 = await connect("JDG08", judgeToken);
+    const st = await jd2.waitFor("state");
+    expect(st.phase).toBe("questionResult");
+    expect(st.judge).toBeNull();
+    // 次の問題で中身が戻り、途中終了で null になる
+    gm.send({ type: "next" });
+    expect((await jd.waitFor("judgeInfo")).judge).toMatchObject({ questionNumber: 2, answers: ["北岳"] });
+    gm.send({ type: "finish" });
+    await gm.waitFor("finalResult");
+    expect((await jd.waitFor("judgeInfo")).judge).toBeNull();
   });
 });
 

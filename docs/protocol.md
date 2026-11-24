@@ -22,7 +22,7 @@
 | `POST /api/rooms` | なし | ルーム作成。`{ roomCode, gmToken }` を返す。コード衝突時は再試行する |
 | `GET /api/rooms/:code` | なし | ルームの存在確認（404 なら無い） |
 | `POST /api/rooms/:code/join` | なし | 入室。`{ nickname }` を送り `{ participantId, participantToken, roomCode }` を返す |
-| `POST /api/rooms/:code/judge-pair` | GM／判定用端末 | 判定用端末のペアリング（Task 4 で実装）。QR のコードと引き換えに判定用トークンを返し、前のトークンを無効にする |
+| `POST /api/rooms/:code/judge-pair` | GM／判定用端末 | 判定用端末のペアリング。`{ pairCode }`（QR の URL のフラグメントのコード）を送り `{ judgeToken }` を返す。コードは 1 回だけ使え、発行から 5 分で切れる。一致しない・期限切れ・使用済みは 403 `{ error: "pair_invalid" }`、ルームが無ければ 404。成功すると前の判定用トークンを無効にし、つながっている判定用端末に `judgeRevoked` を送って閉じる（close code 4001） |
 | `GET /ws/room/:code?token=…` | GM／参加者／判定用トークン | WebSocket 接続 |
 
 管理者認証は `Authorization: Bearer <ADMIN_PASSPHRASE>`。失敗は 401。
@@ -30,7 +30,7 @@
 
 ## WebSocket
 
-- 接続先: `wss://<host>/ws/room/<roomCode>?token=<gmToken | participantToken>`
+- 接続先: `wss://<host>/ws/room/<roomCode>?token=<gmToken | judgeToken | participantToken>`
 - Durable Object がトークンを検証し、GM・判定用端末（`judge`）・参加者のどれかを接続に紐付ける。無効なら 401。
 - 役割は `gm` / `judge` / `player`。`judge` は GM の手元の端末で、早押しの現在の問題の答えと判定メモが見え、送れるのは `judge` メッセージだけ（他は `forbidden`）。
 - Durable Object は WebSocket Hibernation API を使い、メッセージがない間はスリープする。
@@ -55,14 +55,13 @@
 | `kick` | GM | `{ participantId }` | 参加者を退出させる |
 | `startReading` | GM | なし | 早押しの読み上げ（文字送り）開始。`question` かつ早押しモードかつ `ready` のときだけ。問読み音声があれば再生位置 0（「問題！」の頭）から |
 | `buzz` | 参加者 | なし | 早押し。受理は `buzzerUpdated` の `queue` で分かる |
-| `judge` | GM | `{ participantId, correct: boolean }` | 回答中の参加者を判定。`participantId` が回答中の人（キューの先頭）と違えば `invalid_state`（ボタンの二度押しで次の人まで判定されないため） |
+| `judge` | GM・判定用端末 | `{ participantId, correct: boolean }` | 回答中の参加者を判定。`participantId` が回答中の人（キューの先頭）と違えば `invalid_state`（ボタンの二度押しで次の人まで判定されないため） |
 | `chooseSpecialties` | 参加者 | `{ genres: string[] }` | ジャンル制の得意ジャンルの決定（1 人 1 回）。個数は 2（残りのあるジャンルが 2 つ未満ならその数）。3 つ以上はパーサーが `bad_message` で弾き、足りない・重複・存在しない・問題が尽きたジャンルは `bad_specialties`、2 回目は `specialties_already_set`。ジャンル制でない・ロビー・最終結果では `invalid_state`。GM は `forbidden` |
 | `pickGenre` | 選ぶ人・GM | `{ genre: string \| null }` | `genreSelect` 中のジャンル指定。指定したジャンルの未出題から無作為に 1 問を開く。選ぶ人は文字列だけ送れる（本人以外・`null` は `forbidden`）。GM は任意のジャンルか、`null`（ランダムで決める）。残り 0 のジャンル・存在しないジャンルは `genre_unavailable`。`genreSelect` 以外では `invalid_state` |
 | `finish` | GM | なし | 途中終了。`question`・`questionResult`・`genreSelect` のとき最終結果へ進む（`finalResult` を送る）。それ以外は `invalid_state` |
-
 | `issueJudgePairing` | GM | なし | 判定用端末のペアリング QR を発行する。サーバーは `judgePairing` を GM にだけ返す。参加者・判定用端末は `forbidden` |
 
-参加者からの GM 操作、GM からの `answer` は `forbidden` エラーになる。
+参加者からの GM 操作、GM からの `answer` は `forbidden` エラーになる。判定用端末（`judge`）が送れるのは `judge` だけで、`pickGenre` を含む他のメッセージはすべて `forbidden`。
 
 ### サーバー → クライアント
 
@@ -87,8 +86,8 @@
 | `genreSelectStarted` | 全員 | `{ select: GenreSelectView }` | ジャンル選択の場面。`questionResult` 中の `next` で正解者が選ぶ人になるときに送る |
 | `specialtiesChosen` | 全員 | `{ participant }` | 得意ジャンルの決定。`specialties` を含む参加者を送る。出題中なら続けて `buzzerUpdated`（見送りの変化）を送る |
 | `judgePairing` | GM | `{ url: string, expiresAt: number }` | `issueJudgePairing` への返答。QR にする URL（`/judge/:roomCode#pair=<コード>`）と有効期限（ミリ秒）。コードは 1 回だけ使え、発行から 5 分で切れる。新しく発行すると前のコードは捨てる |
-| `judgeStatus` | GM | `{ connected: boolean }` | 判定用端末の接続・切断の通知 |
-| `judgeInfo` | judge | `{ judge: JudgeView \| null }` | 判定用端末への、現在の問題の答え合わせ情報。早押しの出題中以外は `null` |
+| `judgeStatus` | GM | `{ connected: boolean }` | 判定用端末の接続・切断の通知。`connected` は判定用端末がまだ 1 台でもつながっているか |
+| `judgeInfo` | judge | `{ judge: JudgeView \| null }` | 判定用端末への、現在の問題の答え合わせ情報。問題が開いたとき・閉じたとき・`start`・`finish`・`endGame` の後に送る。早押しの出題中以外は `null` |
 | `judgeRevoked` | judge | なし | 新しい QR が読み取られて判定用トークンが無効になるとき、切られる端末にだけ送る。送ってから接続を閉じる |
 | `error` | 本人 | `{ code, message }` | 拒否理由。`message` は日本語の表示用文言 |
 
