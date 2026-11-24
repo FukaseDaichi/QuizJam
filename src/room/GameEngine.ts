@@ -3,7 +3,7 @@ import { resolveSettings } from "../shared/defaults";
 import { isCorrect } from "../shared/normalize";
 import { isFullyVoiced, playbackPositionMs, promptLength, revealedCount, type RevealTimeline } from "../shared/buzzer";
 import { genreCounts, genresOf, isGenreSet, OFF_SPECIALTY_MULTIPLIER, SPECIALTY_COUNT, type GenreCount } from "../shared/genre";
-import type { BuzzerView, ErrorCode, GenreSelectView, IntroSlideView, IntroView, MyAnswerStatus, QuestionResultView, QuestionView } from "../shared/messages";
+import type { BuzzerView, ErrorCode, GenreSelectView, IntroSlideView, IntroView, JudgeView, MyAnswerStatus, QuestionResultView, QuestionView, Role } from "../shared/messages";
 
 export interface EngineState {
   roomCode: string;
@@ -274,11 +274,11 @@ export class GameEngine {
   }
 
   /** 早押しモードでは参加者に問題文・ヒント・問読み音声を渡さない（スマホはボタン専用機） */
-  currentQuestionView(role: "gm" | "player" = "gm"): QuestionView | null {
+  currentQuestionView(role: Role = "gm"): QuestionView | null {
     const set = this.s.questionSet;
     if (!set || (this.s.phase !== "question" && this.s.phase !== "questionResult")) return null;
     const q = set.questions[this.s.currentIndex];
-    const hidden = this.isBuzzer && role === "player";
+    const hidden = this.isBuzzer && role !== "gm";
     const genreMode = this.isGenreMode;
     return {
       index: this.s.currentIndex,
@@ -294,6 +294,23 @@ export class GameEngine {
       deadlineAt: this.s.deadlineAt,
       maxAttempts: this.settings().maxAttempts,
       audio: this.isBuzzer && role === "gm" ? q.audio : undefined,
+    };
+  }
+
+  /** 判定端末向け。早押しで出題中のときだけ、今の問題の答えと判定メモを渡す */
+  judgeView(): JudgeView | null {
+    const set = this.s.questionSet;
+    if (!set || !this.isBuzzer || this.s.phase !== "question") return null;
+    const q = set.questions[this.s.currentIndex];
+    const view = this.currentQuestionView()!;
+    return {
+      questionNumber: view.number,
+      total: view.total,
+      ...(q.genre !== undefined && this.isGenreMode ? { genre: q.genre } : {}),
+      prompt: q.prompt,
+      answers: q.answers,
+      ...(q.judgeNote !== undefined ? { judgeNote: q.judgeNote } : {}),
+      ...(q.audio ? { revealAtMs: q.audio.revealAtMs } : {}),
     };
   }
 

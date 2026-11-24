@@ -880,6 +880,44 @@ describe("GameEngine views with question audio", () => {
   });
 });
 
+describe("GameEngine judge view", () => {
+  const PROMPT = "日本一高い山は";
+  const REVEAL = [1000, 1200, 1400];
+  const AUDIO = { url: "/api/audio/j.mp3", revealAtMs: REVEAL };
+  const set = (mode: "buzzer" | "anagram"): QuestionSet => ({
+    id: "jv", name: "判定", mode, settings: { ...DEFAULT_SETTINGS },
+    questions: [
+      { id: "j1", type: "anagram", prompt: PROMPT, hint: "ヒント", answers: ["富士山", "ふじさん"], judgeNote: "山だけは不正解", audio: AUDIO },
+      { id: "j2", type: "anagram", prompt: "次", answers: ["答"] },
+    ],
+  });
+
+  it("judgeView carries answers and judgeNote only while a buzzer question is open", () => {
+    const e = GameEngine.create("JV0001");
+    e.addParticipant("p1", "みさき");
+    startQuestions(e, set("buzzer"), false, T0);
+    expect(e.judgeView()).toEqual({ questionNumber: 1, total: 2, prompt: PROMPT, answers: ["富士山", "ふじさん"], judgeNote: "山だけは不正解", revealAtMs: REVEAL });
+    const v = e.currentQuestionView("judge")!;
+    expect(v.prompt).toBe("");
+    expect(v.hint).toBeUndefined();
+    expect(v.audio).toBeUndefined();
+    e.closeQuestion(T0 + 100);
+    expect(e.judgeView()).toBeNull();
+  });
+
+  it("judgeView is null for anagram sets", () => {
+    const e = GameEngine.create("JV0002");
+    startQuestions(e, set("anagram"), false, T0);
+    expect(e.judgeView()).toBeNull();
+  });
+
+  it("judgeView is null before the questions start", () => {
+    const e = GameEngine.create("JV0003");
+    e.start(set("buzzer"), false);
+    expect(e.judgeView()).toBeNull();
+  });
+});
+
 describe("GameEngine genre mode", () => {
   const GENRES = ["A", "A", "B", "B", "C"];
   function genreSet(): QuestionSet {
