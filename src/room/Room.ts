@@ -6,7 +6,8 @@ import { getQuestionSet } from "../worker/questionSets";
 import type { LiveSettings } from "../shared/types";
 import { randomToken } from "../worker/token";
 
-type Attachment = { role: "gm" } | { role: "judge" } | { role: "player"; participantId: string };
+/** judge は接続に使ったトークンを持つ。新しい端末をペアリングすると古いトークンの接続は無効になる */
+type Attachment = { role: "gm" } | { role: "judge"; token: string } | { role: "player"; participantId: string };
 
 const CLEANUP_AFTER_MS = 24 * 60 * 60 * 1000;
 /** 判定用端末のペアリングコードの有効期間 */
@@ -87,10 +88,11 @@ export class Room extends DurableObject<Env> {
   /** QR のペアリングコードを判定用トークンに引き換える。コードは 1 回だけ使え、新しいトークンで前の端末を切る */
   private async handleJudgePair(request: Request): Promise<Response> {
     if (!this.engine) return Response.json({ error: "not_found" }, { status: 404 });
-    const body = (await request.json().catch(() => ({}))) as { pairCode?: unknown };
+    const parsed: unknown = await request.json().catch(() => null);
+    const pairCode = typeof parsed === "object" && parsed !== null ? (parsed as { pairCode?: unknown }).pairCode : undefined;
     const stored = this.kvGet("judgePair");
     const pair = stored ? (JSON.parse(stored) as { code: string; expiresAt: number }) : null;
-    if (!pair || typeof body.pairCode !== "string" || body.pairCode !== pair.code || Date.now() >= pair.expiresAt) {
+    if (!pair || typeof pairCode !== "string" || pairCode !== pair.code || Date.now() >= pair.expiresAt) {
       return Response.json({ error: "pair_invalid" }, { status: 403 });
     }
     this.ctx.storage.sql.exec("DELETE FROM kv WHERE key = 'judgePair'");
@@ -101,6 +103,8 @@ export class Room extends DurableObject<Env> {
       this.send(sock, { type: "judgeRevoked" });
       try { sock.close(4001, "judge revoked"); } catch { /* already closed */ }
     }
+    // このペアリングコードが使われたことを GM に知らせる（QR の表示を閉じる合図）
+    this.sendToGm({ type: "judgeStatus", connected: this.judgeConnected(), paired: true });
     return Response.json({ judgeToken });
   }
 
@@ -130,7 +134,7 @@ export class Room extends DurableObject<Env> {
   private resolveToken(token: string): Attachment | null {
     if (!token) return null;
     if (this.gmToken && token === this.gmToken) return { role: "gm" };
-    if (this.judgeToken && token === this.judgeToken) return { role: "judge" };
+    if (this.judgeToken && token === this.judgeToken) return { role: "judge", token };
     const rows = this.ctx.storage.sql.exec("SELECT participant_id FROM tokens WHERE token = ?", token).toArray() as { participant_id: string }[];
     return rows[0] ? { role: "player", participantId: rows[0].participant_id } : null;
   }
@@ -141,6 +145,8 @@ export class Room extends DurableObject<Env> {
     const attachment = ws.deserializeAttachment() as Attachment;
     const msg = typeof raw === "string" ? parseClientMessage(raw) : null;
     if (!msg) return this.sendError(ws, "bad_message", "メッセージを解釈できません");
+    // 置き換えられた判定用端末の接続からは何も受け付けない
+    if (attachment.role === "judge" && !this.isCurrentJudge(attachment)) return this.sendError(ws, "forbidden", this.errorText("forbidden"));
     try {
       await this.dispatch(ws, attachment, msg);
     } catch (e) {
@@ -451,6 +457,7 @@ export class Room extends DurableObject<Env> {
   private broadcastState(): void {
     for (const ws of this.ctx.getWebSockets()) {
       const att = ws.deserializeAttachment() as Attachment;
+      if (att.role === "judge" && !this.isCurrentJudge(att)) continue;
       this.send(ws, this.stateFor(att));
     }
   }
@@ -477,7 +484,14 @@ export class Room extends DurableObject<Env> {
   /** 答えと判定メモは判定用端末にだけ送る（broadcast に載せない） */
   private sendJudgeInfo(): void {
     const judge = this.engine!.judgeView();
-    for (const sock of this.ctx.getWebSockets("role:judge")) this.send(sock, { type: "judgeInfo", judge });
+    for (const sock of this.ctx.getWebSockets("role:judge")) {
+      if (this.isCurrentJudge(sock.deserializeAttachment() as Attachment)) this.send(sock, { type: "judgeInfo", judge });
+    }
+  }
+
+  /** 判定用端末の接続が、いま有効なトークンでつながったものか */
+  private isCurrentJudge(attachment: Attachment): boolean {
+    return attachment.role === "judge" && this.judgeToken !== null && attachment.token === this.judgeToken;
   }
 
   private sendToGm(msg: ServerMessage): void {

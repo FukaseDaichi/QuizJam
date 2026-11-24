@@ -243,7 +243,7 @@ export type ServerMessage =
   | { type: "genreSelectStarted"; select: GenreSelectView }
   | { type: "specialtiesChosen"; participant: Participant }
   | { type: "judgePairing"; url: string; expiresAt: number }   // GM にだけ
-  | { type: "judgeStatus"; connected: boolean }               // GM にだけ
+  | { type: "judgeStatus"; connected: boolean; paired?: true } // GM にだけ。paired はペアリングコードが使われた直後だけ付く
   | { type: "judgeInfo"; judge: JudgeView | null }            // judge にだけ
   | { type: "judgeRevoked" }                                  // 切られる判定用端末にだけ。送ってから close
   | { type: "error"; code: ErrorCode; message: string };

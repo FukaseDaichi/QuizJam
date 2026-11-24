@@ -4,7 +4,7 @@ import { Smartphone, X } from "lucide-react";
 import { pairingMsLeft, shouldShowJudgePairing } from "../lib/judgePairing";
 
 /**
- * 判定用スマホをつなぐ QR。判定用端末がつながる（reducer が judgePairing を消す）か、
+ * 判定用スマホをつなぐ QR。この QR が使われる（judgeStatus の paired で reducer が judgePairing を消す）か、
  * 期限が切れるか、手で閉じるまで出す。再接続の state では judgePairing が消えないので、期限は自分で見る。
  */
 export function JudgePairingModal({ pairing, clockOffsetMs }: {
@@ -31,7 +31,7 @@ export function JudgePairingModal({ pairing, clockOffsetMs }: {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [visible, expiresAt]);
 
   if (!visible || !pairing) return null;
   return (

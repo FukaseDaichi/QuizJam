@@ -351,14 +351,18 @@ describe("buzzer mode", () => {
       expect(s.judge?.questionNumber).toBe(2);
     });
 
-    it("judgePairing is stored, judgeStatus connected clears it", () => {
+    it("judgePairing is stored, and only judgeStatus paired clears it", () => {
       let s = applyServerMessage(initialClientState, { type: "judgePairing", url: "/judge/ABC123#pair=x", expiresAt: T0 + 1 }, T0);
       expect(s.judgePairing).toEqual({ url: "/judge/ABC123#pair=x", expiresAt: T0 + 1 });
       s = applyServerMessage(s, { type: "judgeStatus", connected: false }, T0);
       expect(s.judgeConnected).toBe(false);
       expect(s.judgePairing).not.toBeNull();
+      // すでにペアリング済みの端末が再接続しただけでは QR を閉じない
       s = applyServerMessage(s, { type: "judgeStatus", connected: true }, T0);
       expect(s.judgeConnected).toBe(true);
+      expect(s.judgePairing).not.toBeNull();
+      s = applyServerMessage(s, { type: "judgeStatus", connected: false, paired: true }, T0);
+      expect(s.judgeConnected).toBe(false);
       expect(s.judgePairing).toBeNull();
     });
 

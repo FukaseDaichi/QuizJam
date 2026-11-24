@@ -46,7 +46,10 @@ export function JudgePage() {
       (e) => {
         if (e instanceof ApiError && e.status === 403) {
           clearFragment();
-          setPairError("unusable");
+          // 使用済みの QR を開き直しただけなら、保存済みのトークンでつなぐ（切られていれば judgeRevoked や未接続の案内が出る）
+          const saved = storage.getJudgeToken(roomCode);
+          if (saved) setToken(saved);
+          else setPairError("unusable");
         } else {
           // 通信の失敗などではコードはまだ使える。フラグメントを残し、再読み込みでやり直せるようにする
           setPairError("failed");

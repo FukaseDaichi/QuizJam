@@ -145,7 +145,7 @@ export function applyServerMessage(s: ClientState, msg: ServerMessage, nowMs: nu
     case "judgePairing":
       return { ...s, judgePairing: { url: msg.url, expiresAt: msg.expiresAt } };
     case "judgeStatus":
-      return { ...s, judgeConnected: msg.connected, judgePairing: msg.connected ? null : s.judgePairing };
+      return { ...s, judgeConnected: msg.connected, judgePairing: msg.paired ? null : s.judgePairing };
     case "judgeInfo":
       return { ...s, judge: msg.judge };
     case "judgeRevoked":

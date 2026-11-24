@@ -798,6 +798,12 @@ describe("Room DO judge device", () => {
     expect(again.status).toBe(403);
     expect(await again.json()).toEqual({ error: "pair_invalid" });
     expect((await postPair("JDG01", "nope")).status).toBe(403);
+    // 本文がオブジェクトでなければ 403（500 にしない）
+    for (const body of ["null", "42", "\"x\"", "[]", "not json"]) {
+      const bad = await stubFor("JDG01").fetch("http://room/judge-pair", { method: "POST", body });
+      expect(bad.status).toBe(403);
+      expect(await bad.json()).toEqual({ error: "pair_invalid" });
+    }
     // ルームが無ければ 404
     expect((await postPair("JDGNONE", pairCode)).status).toBe(404);
   });
@@ -898,6 +904,47 @@ describe("Room DO judge device", () => {
     const fresh = await connect("JDG06", newToken);
     expect((await fresh.waitFor("state")).role).toBe("judge");
     expect(old.log.filter((m) => m.type === "judgeRevoked")).toHaveLength(1);
+  });
+
+  it("GM gets judgeStatus paired only when a pairing code is used", async () => {
+    await initRoom("JDG09");
+    const gm = await connect("JDG09", "gm-token");
+    await gm.waitFor("state");
+    const token = await pair(gm, "JDG09");
+    expect(await gm.waitFor("judgeStatus")).toMatchObject({ paired: true });
+    const jd = await connect("JDG09", token);
+    await jd.waitFor("state");
+    expect(await gm.waitFor("judgeStatus", (m) => m.connected)).not.toHaveProperty("paired");
+    // ペアリング済みの端末が再接続しても paired は付かない
+    jd.ws.close(1000, "bye");
+    await gm.waitFor("judgeStatus", (m) => !m.connected);
+    const jd2 = await connect("JDG09", token);
+    await jd2.waitFor("state");
+    await gm.waitFor("judgeStatus", (m) => m.connected);
+    expect(gm.log.filter((m) => m.type === "judgeStatus" && m.paired)).toHaveLength(1);
+  });
+
+  it("a judge connection whose token was replaced is ignored", async () => {
+    const { gm, jd, p1, c1 } = await setup("JDG10");
+    gm.send({ type: "startReading" });
+    await c1.waitFor("buzzerUpdated", (m) => m.buzzer.status === "reading");
+    c1.send({ type: "buzz" });
+    await jd.waitFor("buzzerUpdated", (m) => m.buzzer.status === "paused");
+    // 接続を閉じずにトークンだけ差し替え、古い接続が残った状況を作る
+    await runInDurableObject(stubFor("JDG10"), (instance) => {
+      (instance as unknown as { judgeToken: string }).judgeToken = "f".repeat(64);
+    });
+    jd.send({ type: "judge", participantId: p1.participantId, correct: false });
+    expect((await jd.waitFor("error")).code).toBe("forbidden");
+    // 古い接続の不正解判定は効いていないので、GM の正解判定が通る
+    gm.send({ type: "judge", participantId: p1.participantId, correct: true });
+    expect(await c1.waitFor("answerResult")).toMatchObject({ correct: true });
+    await gm.waitFor("questionClosed");
+    // 古い接続には judgeInfo も届かない
+    gm.send({ type: "next" });
+    await gm.waitFor("questionStarted");
+    await c1.waitFor("questionStarted");
+    expect(jd.received.filter((m) => m.type === "judgeInfo")).toHaveLength(0);
   });
 
   it("GM gets judgeStatus and judgeConnected in state", async () => {
