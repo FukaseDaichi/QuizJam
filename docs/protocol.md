@@ -22,7 +22,7 @@
 | `POST /api/rooms` | なし | ルーム作成。`{ roomCode, gmToken }` を返す。コード衝突時は再試行する |
 | `GET /api/rooms/:code` | なし | ルームの存在確認（404 なら無い） |
 | `POST /api/rooms/:code/join` | なし | 入室。`{ nickname }` を送り `{ participantId, participantToken, roomCode }` を返す |
-| `POST /api/rooms/:code/judge-pair` | GM／判定用端末 | 判定用端末のペアリング。`{ pairCode }`（QR の URL のフラグメントのコード）を送り `{ judgeToken }` を返す。コードは 1 回だけ使え、発行から 5 分で切れる。一致しない・期限切れ・使用済みは 403 `{ error: "pair_invalid" }`、ルームが無ければ 404。成功すると前の判定用トークンを無効にし、つながっている判定用端末に `judgeRevoked` を送って閉じる（close code 4001） |
+| `POST /api/rooms/:code/judge-pair` | なし（ペアリングコード） | 判定用端末のペアリング。`{ pairCode }`（QR の URL のフラグメントのコード）を送り `{ judgeToken }` を返す。コードは 1 回だけ使え、発行から 5 分で切れる。一致しない・期限切れ・使用済みは 403 `{ error: "pair_invalid" }`、ルームが無ければ 404。成功すると前の判定用トークンを無効にし、つながっている判定用端末に `judgeRevoked` を送って閉じ、GM に `judgeStatus`（`paired: true`）を送る。本文が JSON のオブジェクトでなければ（`null` など）403 `pair_invalid` |
 | `GET /ws/room/:code?token=…` | GM／参加者／判定用トークン | WebSocket 接続 |
 
 管理者認証は `Authorization: Bearer <ADMIN_PASSPHRASE>`。失敗は 401。
@@ -61,7 +61,7 @@
 | `finish` | GM | なし | 途中終了。`question`・`questionResult`・`genreSelect` のとき最終結果へ進む（`finalResult` を送る）。それ以外は `invalid_state` |
 | `issueJudgePairing` | GM | なし | 判定用端末のペアリング QR を発行する。サーバーは `judgePairing` を GM にだけ返す。参加者・判定用端末は `forbidden` |
 
-参加者からの GM 操作、GM からの `answer` は `forbidden` エラーになる。判定用端末（`judge`）が送れるのは `judge` だけで、`pickGenre` を含む他のメッセージはすべて `forbidden`。
+参加者からの GM 操作、GM からの `answer` は `forbidden` エラーになる。判定用端末（`judge`）が送れるのは `judge` だけで、`pickGenre` を含む他のメッセージはすべて `forbidden`。新しい端末のペアリングで置き換えられた判定用端末の接続からのメッセージも、`judge` を含めて `forbidden`。
 
 ### サーバー → クライアント
 
@@ -86,7 +86,7 @@
 | `genreSelectStarted` | 全員 | `{ select: GenreSelectView }` | ジャンル選択の場面。`questionResult` 中の `next` で正解者が選ぶ人になるときに送る |
 | `specialtiesChosen` | 全員 | `{ participant }` | 得意ジャンルの決定。`specialties` を含む参加者を送る。出題中なら続けて `buzzerUpdated`（見送りの変化）を送る |
 | `judgePairing` | GM | `{ url: string, expiresAt: number }` | `issueJudgePairing` への返答。QR にする URL（`/judge/:roomCode#pair=<コード>`）と有効期限（ミリ秒）。コードは 1 回だけ使え、発行から 5 分で切れる。新しく発行すると前のコードは捨てる |
-| `judgeStatus` | GM | `{ connected: boolean }` | 判定用端末の接続・切断の通知。`connected` は判定用端末がまだ 1 台でもつながっているか |
+| `judgeStatus` | GM | `{ connected: boolean; paired?: true }` | 判定用端末の接続・切断の通知。`connected` は判定用端末がまだ 1 台でもつながっているか。ペアリングコードが使われた直後にだけ `paired: true` を付けて送る（GM 画面はこれで QR を閉じる。新しい端末が後で接続したときは `paired` 無し） |
 | `judgeInfo` | judge | `{ judge: JudgeView \| null }` | 判定用端末への、現在の問題の答え合わせ情報。問題が開いたとき・閉じたとき・`start`・`finish`・`endGame` の後に送る。早押しの出題中以外は `null` |
 | `judgeRevoked` | judge | なし | 新しい QR が読み取られて判定用トークンが無効になるとき、切られる端末にだけ送る。送ってから接続を閉じる |
 | `error` | 本人 | `{ code, message }` | 拒否理由。`message` は日本語の表示用文言 |
