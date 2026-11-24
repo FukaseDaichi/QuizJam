@@ -3,6 +3,7 @@ import { MODE_LABELS, TIMER_MODE_LABELS } from "../lib/labels";
 import { ChevronDown, ChevronRight, Plus, Shuffle, Volume2, X } from "lucide-react";
 import type { GenreCount } from "../../shared/genre";
 import { MAX_GENRE_LENGTH } from "../../shared/genre";
+import { MAX_JUDGE_NOTE_LENGTH } from "../../shared/validateQuestionSet";
 import type { IntroSlide, Question, QuestionSetMode, QuestionSettings, TimerMode } from "../../shared/types";
 import { MAX_CHARS_PER_SECOND, MIN_CHARS_PER_SECOND } from "../../shared/validateQuestionSet";
 import { shuffleAnagram } from "../../shared/anagram";
@@ -171,6 +172,12 @@ export function QuestionInspector({ question, index, mode, baseSettings, passphr
         <Field label="ジャンル" hint="ジャンル制にするなら全問に付ける（3種類以上）。付けなければ通常の早押し">
           <input value={question.genre ?? ""} onChange={(e) => onChange({ genre: e.target.value || undefined })} list={`genres-${question.id}`} maxLength={MAX_GENRE_LENGTH} placeholder="例: 動物" className={inputClass} />
           <datalist id={`genres-${question.id}`}>{genres.map((g) => <option key={g} value={g} />)}</datalist>
+        </Field>
+      )}
+
+      {buzzer && (
+        <Field label="判定メモ（任意）" hint="GM の判定用端末にだけ出ます">
+          <textarea rows={3} value={question.judgeNote ?? ""} onChange={(e) => onChange({ judgeNote: e.target.value || undefined })} maxLength={MAX_JUDGE_NOTE_LENGTH} className={textareaClass} />
         </Field>
       )}
 

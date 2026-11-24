@@ -27,6 +27,7 @@ export interface Question {
   explanationImageUrl?: string; // 問題結果画面に映す解説画像。出題中は参加者に送らない
   overrides?: Partial<QuestionSettings>;
   audio?: QuestionAudio;       // 早押しの問読み音声。早押しモードでだけ使う
+  judgeNote?: string;          // 早押しで GM の判定用端末にだけ出すメモ（複数行可）。前後の空白を除いた 1〜500 文字
   genre?: string;              // ジャンル制の早押しでだけ使う。前後の空白を除いた 1〜30 文字
 }
 

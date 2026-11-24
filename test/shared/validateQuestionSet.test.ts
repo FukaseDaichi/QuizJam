@@ -130,6 +130,21 @@ describe("validateQuestionSetInput buzzer mode", () => {
   });
 });
 
+describe("validateQuestionSetInput judgeNote", () => {
+  const buzzerSet = (q: Record<string, unknown>, mode = "buzzer") => validateQuestionSetInput({ ...base, mode, questions: [{ prompt: "あいう", answers: ["え"], ...q }] });
+  const note = (v: ReturnType<typeof buzzerSet>) => ("error" in v ? v.error : v.questions[0].judgeNote);
+
+  it("accepts a trimmed multi-line judgeNote and rejects one over 500 chars", () => {
+    expect(note(buzzerSet({ judgeNote: "  8000点は不正解\n満貫と答えたら聞き直す  " }))).toBe("8000点は不正解\n満貫と答えたら聞き直す");
+    expect(buzzerSet({ judgeNote: "あ".repeat(501) })).toEqual({ error: "questions[0].judgeNote invalid" });
+    expect(note(buzzerSet({ judgeNote: "   " }))).toBeUndefined();
+    expect(buzzerSet({ judgeNote: 5 })).toEqual({ error: "questions[0].judgeNote invalid" });
+  });
+  it("drops judgeNote outside buzzer mode", () => {
+    expect(note(buzzerSet({ judgeNote: "メモ" }, "anagram"))).toBeUndefined();
+  });
+});
+
 describe("validateQuestionSetInput question audio", () => {
   const audio = { url: "/api/audio/0a1b.mp3", revealAtMs: [2000, 2300, 2300] };
   const buzzerSet = (q: Record<string, unknown>) => validateQuestionSetInput({ ...base, mode: "buzzer", questions: [{ prompt: "あいう", answers: ["え"], ...q }] });

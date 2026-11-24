@@ -49,6 +49,7 @@ function optionalImageUrl(x: unknown, field: string): string | undefined | { err
 }
 
 export const MAX_INTRO_SLIDES = 20;
+export const MAX_JUDGE_NOTE_LENGTH = 500;
 
 /** 省略・空白だけは undefined。文字列でないか長すぎれば null。前後の空白は除く */
 function optionalText(x: unknown, max: number): string | undefined | null {
@@ -146,6 +147,13 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       if (g === null) return { error: `questions[${i}].genre invalid` };
       genre = g;
     }
+    // 判定メモは早押しでだけ使う。複数行を許し、空白だけは無指定
+    let judgeNote: string | undefined;
+    if (mode === "buzzer") {
+      const n = optionalText(qq.judgeNote, MAX_JUDGE_NOTE_LENGTH);
+      if (n === null) return { error: `questions[${i}].judgeNote invalid` };
+      judgeNote = n;
+    }
     questions.push({
       id: typeof qq.id === "string" && qq.id ? qq.id : crypto.randomUUID(),
       type: "anagram",
@@ -157,6 +165,7 @@ export function validateQuestionSetInput(x: unknown): QuestionSetInput | { error
       overrides,
       audio,
       genre,
+      judgeNote,
     });
   }
   if (mode === "buzzer") {
