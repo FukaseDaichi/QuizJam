@@ -241,11 +241,11 @@
       "generatedAt": "2026-11-22T19:24:18.685Z"
     },
     "Q35": {
-      "hash": "4f2c57c5a8c7c91aed8c0cb97262ff7d8a11c9a9cf5bae46b2f3d397d44b03a0",
-      "durationMs": 16200,
+      "hash": "fc9080c3aa1d2cdaf0aa877960282be9459fe86e04bfd186d74306997bce4ea0",
+      "durationMs": 18280,
       "voice": "Kore",
       "model": "gemini-3.8-flash-tts",
-      "generatedAt": "2026-11-22T19:24:27.441Z"
+      "generatedAt": "2026-11-24T10:26:47.525Z"
     },
     "Q36": {
       "hash": "4f561b7970a27310873c3776b619565e17ecb3edda13c59025216dbe1c033319",
